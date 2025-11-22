@@ -3,11 +3,12 @@
 
 var obsidian = require('obsidian');
 
-// --- File Suggester Class ---
+// --- File Suggester Class with Heading/Block Support ---
 class FileSuggest extends obsidian.AbstractInputSuggest {
     constructor(app, textInputEl, modal) {
         super(app, textInputEl);
         this.modal = modal;
+        this.app = app;
     }
 
     getSuggestions(query) {
@@ -16,35 +17,237 @@ class FileSuggest extends obsidian.AbstractInputSuggest {
             return [];
         }
 
+        const trimmedQuery = query.trim();
+
+        // Pattern 1: [[## - headings in ALL files (not blocks!)
+        if (trimmedQuery === '##') {
+            return this.getAllHeadings();
+        }
+
+        // Pattern 2: [[# - headings in current file
+        if (trimmedQuery === '#') {
+            return this.getHeadingsInCurrentFile();
+        }
+
+        // Pattern 3: [[filename#^blockquery - blocks in specific file
+        if (trimmedQuery.includes('#^')) {
+            const parts = trimmedQuery.split('#^');
+            const fileName = parts[0];
+            const blockQuery = parts[1] || '';
+            return this.getBlocksInFile(fileName, blockQuery);
+        }
+
+        // Pattern 4: [[filename#headingquery - headings in specific file
+        if (trimmedQuery.includes('#') && !trimmedQuery.startsWith('#')) {
+            const parts = trimmedQuery.split('#');
+            const fileName = parts[0];
+            const headingQuery = parts[1] || '';
+            return this.getHeadingsInFile(fileName, headingQuery);
+        }
+
+        // Pattern 5: [[ - regular file search
+        return this.getFiles(trimmedQuery);
+    }
+
+    getFiles(query) {
         const files = this.app.vault.getFiles();
         const lowerQuery = query.toLowerCase();
 
-        // Simple filter: matches filename or path
         const matches = files.filter(file => 
             file.path.toLowerCase().contains(lowerQuery) || 
             file.basename.toLowerCase().contains(lowerQuery)
         );
 
-        // Return top 20 matches to avoid performance issues
+        // Sort by recency
+        matches.sort((a, b) => b.stat.mtime - a.stat.mtime);
         return matches.slice(0, 20);
     }
 
-    renderSuggestion(file, el) {
-        // Mimic Obsidian's appearance: Title (bold) + Path (small/muted)
-        el.createEl("div", { text: file.basename, cls: "suggestion-title" });
-        if (file.path !== file.name) {
-            el.createEl("small", { text: file.path, cls: "suggestion-note" });
+    getHeadingsInCurrentFile() {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (!activeFile) return [];
+
+        const cache = this.app.metadataCache.getFileCache(activeFile);
+        if (!cache || !cache.headings) return [];
+
+        return cache.headings.map(h => ({
+            type: 'heading',
+            heading: h.heading,
+            level: h.level,
+            file: activeFile
+        }));
+    }
+
+    getAllHeadings() {
+        const files = this.app.vault.getMarkdownFiles();
+        const allHeadings = [];
+
+        for (const file of files) {
+            const cache = this.app.metadataCache.getFileCache(file);
+            if (cache && cache.headings) {
+                cache.headings.forEach(h => {
+                    allHeadings.push({
+                        type: 'heading',
+                        heading: h.heading,
+                        level: h.level,
+                        file: file
+                    });
+                });
+            }
+        }
+
+        return allHeadings.slice(0, 50); // Limit to 50 results
+    }
+
+    getHeadingsInFile(fileName, headingQuery = '') {
+        const files = this.app.vault.getFiles();
+        const lowerFileName = fileName.toLowerCase();
+
+        // Find matching file
+        const file = files.find(f => 
+            f.basename.toLowerCase() === lowerFileName ||
+            f.path.toLowerCase().includes(lowerFileName)
+        );
+
+        if (!file) return [];
+
+        const cache = this.app.metadataCache.getFileCache(file);
+        if (!cache || !cache.headings) return [];
+
+        const lowerHeadingQuery = headingQuery.toLowerCase();
+        return cache.headings
+            .filter(h => !headingQuery || h.heading.toLowerCase().includes(lowerHeadingQuery))
+            .map(h => ({
+                type: 'heading',
+                heading: h.heading,
+                level: h.level,
+                file: file
+            }));
+    }
+
+    getBlocksInFile(fileName, blockQuery = '') {
+        const files = this.app.vault.getFiles();
+        const lowerFileName = fileName.toLowerCase();
+
+        // Find matching file
+        const file = files.find(f => 
+            f.basename.toLowerCase() === lowerFileName ||
+            f.path.toLowerCase().includes(lowerFileName)
+        );
+
+        if (!file) return [];
+
+        const cache = this.app.metadataCache.getFileCache(file);
+        if (!cache || !cache.blocks) return [];
+
+        const lowerBlockQuery = blockQuery.toLowerCase();
+        return Object.keys(cache.blocks)
+            .filter(blockId => !blockQuery || blockId.toLowerCase().includes(lowerBlockQuery))
+            .map(blockId => ({
+                type: 'block',
+                blockId: blockId,
+                file: file
+            }));
+    }
+
+    renderSuggestion(item, el) {
+        if (item.type === 'heading') {
+            // Create main container
+            const container = el.createDiv({ cls: "suggestion-item" });
+
+            // Heading text on left
+            const titleDiv = container.createDiv({ cls: "suggestion-content" });
+            titleDiv.createSpan({ 
+                text: item.heading,
+                cls: "suggestion-title"
+            });
+
+            // H1, H2, etc. on right
+            const auxDiv = container.createDiv({ cls: "suggestion-aux" });
+            auxDiv.createSpan({ 
+                text: `H${item.level}`,
+                cls: "suggestion-note"
+            });
+
+            // File path below (if not current file or if showing all headings)
+            if (item.file) {
+                const currentFile = this.app.workspace.getActiveFile();
+                const showPath = !currentFile || item.file.path !== currentFile.path;
+                if (showPath) {
+                    container.createDiv({
+                        text: item.file.path,
+                        cls: "suggestion-note"
+                    });
+                }
+            }
+        } else if (item.type === 'block') {
+            // Render block with ^ prefix
+            el.createEl("div", { 
+                text: `^${item.blockId}`,
+                cls: "suggestion-title" 
+            });
+            if (item.file) {
+                el.createEl("small", { 
+                    text: item.file.path, 
+                    cls: "suggestion-note" 
+                });
+            }
+        } else {
+            // Render file (TFile object)
+            el.createEl("div", { text: item.basename, cls: "suggestion-title" });
+            if (item.path !== item.name) {
+                el.createEl("small", { text: item.path, cls: "suggestion-note" });
+            }
         }
     }
 
-    selectSuggestion(file) {
-        // When a file is selected, update the input
-        const newVal = file.basename;
+    selectSuggestion(item) {
+        let linkValue;
 
-        this.textInputEl.value = newVal;
-        this.textInputEl.trigger("input"); // Trigger update logic in modal
+        if (item.type === 'heading') {
+            // Format: #heading or filename#heading (NO leading #)
+            const currentFile = this.app.workspace.getActiveFile();
+            if (item.file && currentFile && item.file.path === currentFile.path) {
+                // Current file - just #heading
+                linkValue = `#${item.heading}`;
+            } else if (item.file) {
+                // Other file - filename#heading
+                const fileName = item.file.extension === 'md' ? item.file.basename : item.file.name;
+                linkValue = `${fileName}#${item.heading}`;
+            }
+        } else if (item.type === 'block') {
+            // Format: #^blockid or filename#^blockid
+            const currentFile = this.app.workspace.getActiveFile();
+            if (item.file && currentFile && item.file.path === currentFile.path) {
+                // Current file - just #^blockid
+                linkValue = `#^${item.blockId}`;
+            } else if (item.file) {
+                // Other file - filename#^blockid
+                const fileName = item.file.extension === 'md' ? item.file.basename : item.file.name;
+                linkValue = `${fileName}#^${item.blockId}`;
+            }
+        } else {
+            // Regular file
+            if (item.extension === 'md') {
+                linkValue = item.basename;
+            } else {
+                linkValue = item.name;
+            }
+        }
 
+        this.textInputEl.value = linkValue;
+        this.textInputEl.trigger("input");
         this.close();
+    }
+
+    selectCurrentSuggestion() {
+        if (this.suggestions && this.suggestions.length > 0) {
+            const selectedIndex = this.selectedItem || 0;
+            const selectedItem = this.suggestions[selectedIndex];
+            if (selectedItem) {
+                this.selectSuggestion(selectedItem);
+            }
+        }
     }
 }
 
@@ -100,19 +303,18 @@ class LinkEditModal extends obsidian.Modal {
             });
         });
 
+        // --- Warnings Container ---
+        this.warningsContainer = contentEl.createDiv({ cls: "link-warnings-container" });
+
         // --- Conversion Notice (if URL was converted) ---
         if (this.conversionNotice) {
-            this.noticeEl = contentEl.createDiv({ 
-                cls: "link-conversion-notice"
-            });
-            this.noticeEl.createEl("small", { 
-                text: this.conversionNotice,
-                cls: "link-conversion-text"
+            this.warningsContainer.createEl("div", { 
+                cls: "link-conversion-notice",
+                text: this.conversionNotice
             });
         }
 
-        // --- Link Type Toggle ---
-        // Now create toggle with the correctly determined isWiki value
+        // --- Link Type Toggle (keyboard accessible) ---
         this.typeSetting = new obsidian.Setting(contentEl)
             .setName("Link Type")
             .setDesc(this.isWiki ? "Wiki Link" : "Markdown Link")
@@ -124,6 +326,16 @@ class LinkEditModal extends obsidian.Modal {
                         this.isWiki = value;
                         this.updateUIState();
                     });
+
+                // Make toggle keyboard accessible
+                toggle.toggleEl.setAttribute('tabindex', '0');
+                toggle.toggleEl.addEventListener('keydown', (e) => {
+                    if (e.key === ' ' || e.key === 'Spacebar') {
+                        e.preventDefault();
+                        toggle.setValue(!toggle.getValue());
+                        toggle.onChange(toggle.getValue());
+                    }
+                });
             });
 
         // --- Buttons ---
@@ -136,49 +348,87 @@ class LinkEditModal extends obsidian.Modal {
 
         // --- Key Handling ---
         this.modalEl.addEventListener("keydown", (e) => {
+            // Tab key: if suggester is open, select current suggestion
+            if (e.key === "Tab") {
+                if (document.activeElement === this.destInput.inputEl && this.fileSuggest.isOpen) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.fileSuggest.selectCurrentSuggestion();
+                    return;
+                }
+            }
+
+            // Enter key submits (with validation)
             if (e.key === "Enter") {
+                if (e.target === this.toggleComponent.toggleEl) {
+                    return;
+                }
+                if (this.fileSuggest.isOpen) {
+                    return;
+                }
                 e.preventDefault();
                 this.submit();
-            } else if (e.key === "Escape") {
+            } 
+            // Escape cancels and closes
+            else if (e.key === "Escape") {
+                if (this.fileSuggest.isOpen) {
+                    this.fileSuggest.close();
+                    return;
+                }
                 this.close();
             }
         });
 
+        // Initial state update
         this.updateUIState();
 
-        // --- Focus Logic ---
-        if (this.shouldSelectText && this.link.text && this.link.text.length > 0) {
-            // Focus text box and select all
+        // --- Smart Focus Logic ---
+        this.setInitialFocus();
+    }
+
+    setInitialFocus() {
+        const linkText = this.link.text;
+        const linkDest = this.link.destination;
+        const destLength = linkDest ? linkDest.length : 0;
+
+        if (!linkText || linkText.length === 0) {
+            this.textInput.inputEl.focus();
+        }
+        else if (!linkDest || linkDest.length === 0) {
+            this.destInput.inputEl.focus();
+        }
+        else if (destLength > 500 || this.isAlmostUrl(linkDest)) {
+            this.destInput.inputEl.focus();
+            this.destInput.inputEl.select();
+        }
+        else if (this.shouldSelectText) {
             this.textInput.inputEl.focus();
             this.textInput.inputEl.select();
-        } else if (this.link.text && this.link.text.length > 0) {
-            // Normal behavior: focus destination if text is populated
+        }
+        else {
             this.destInput.inputEl.focus();
-            if (this.link.destination && this.link.destination.length > 0) {
+            if (linkDest && linkDest.length > 0) {
                 this.destInput.inputEl.select();
             }
-        } else {
-            // Default: focus text box
-            this.textInput.inputEl.focus();
         }
     }
 
     isUrl(str) {
         if (!str) return false;
         const trimmed = str.trim();
-
-        // Only match URLs that Obsidian actually auto-links (GFM autolink extension):
-        // 1. http:// or https://
-        // 2. www.
-        // Note: Bare domains like "example.com" are NOT auto-linked by Obsidian
         return /^https?:\/\/\S+$|^www\.\S+$/i.test(trimmed);
+    }
+
+    isAlmostUrl(str) {
+        if (!str) return false;
+        const trimmed = str.trim();
+        return /^htp:\/\/|^htps:\/\/|^http:\/[^\/]|^https\/\/|^www\.[a-zA-Z0-9-]+$/i.test(trimmed);
     }
 
     handleDestInput() {
         const val = this.destInput.getValue();
         const isNowUrl = this.isUrl(val);
 
-        // If the destination is a valid URL, switch to Markdown
         if (isNowUrl) {
             this.isWiki = false;
             this.toggleComponent.setValue(false);
@@ -189,14 +439,85 @@ class LinkEditModal extends obsidian.Modal {
     }
 
     updateUIState() {
-        // Update Description Label
         this.typeSetting.setDesc(this.isWiki ? "Wiki Link" : "Markdown Link");
+
+        const existingWarnings = this.warningsContainer.querySelectorAll('.link-warning');
+        existingWarnings.forEach(w => w.remove());
+
+        this.destInput.inputEl.classList.remove("link-warning-highlight");
+        this.textInput.inputEl.classList.remove("link-warning-highlight");
+
+        const dest = this.destInput.getValue();
+        const destLength = dest ? dest.length : 0;
+
+        const warnings = [];
+
+        if (this.isWiki && this.isUrl(dest)) {
+            warnings.push({
+                text: "⚠️ Warning: Valid URL detected but Wiki Link format selected. Wiki links cannot link to external URLs.",
+                cls: "link-warning-error"
+            });
+        }
+
+        if (!this.isUrl(dest) && this.isAlmostUrl(dest)) {
+            warnings.push({
+                text: "⚠️ Warning: Destination looks like a URL but may have typos (check protocol).",
+                cls: "link-warning-caution"
+            });
+        }
+
+        if (destLength > 500) {
+            warnings.push({
+                text: `⚠️ Warning: Destination is very long (${destLength} chars). Consider shortening for reliability.`,
+                cls: "link-warning-caution"
+            });
+        }
+
+        if (warnings.length > 0) {
+            warnings.forEach(warning => {
+                this.warningsContainer.createEl("div", {
+                    cls: `link-warning ${warning.cls}`,
+                    text: warning.text
+                });
+            });
+
+            this.destInput.inputEl.classList.add("link-warning-highlight");
+        }
     }
 
     submit() {
+        const linkText = this.textInput.getValue().trim();
+        const linkDest = this.destInput.getValue().trim();
+
+        if (!linkText || !linkDest) {
+            const existingValidation = this.warningsContainer.querySelectorAll('.link-validation-error');
+            existingValidation.forEach(w => w.remove());
+
+            const errorDiv = this.warningsContainer.createEl("div", {
+                cls: "link-warning link-validation-error link-warning-error"
+            });
+            errorDiv.createEl("div", {
+                text: "⚠️ Error: Both Link Text and Destination are required."
+            });
+            errorDiv.createEl("div", {
+                text: "Press Escape to cancel and close without making changes.",
+                cls: "link-validation-hint"
+            });
+
+            if (!linkText) {
+                this.textInput.inputEl.focus();
+                this.textInput.inputEl.classList.add("link-warning-highlight");
+            } else if (!linkDest) {
+                this.destInput.inputEl.focus();
+                this.destInput.inputEl.classList.add("link-warning-highlight");
+            }
+
+            return;
+        }
+
         this.onSubmit({
-            text: this.textInput.getValue(),
-            destination: this.destInput.getValue(),
+            text: linkText,
+            destination: linkDest,
             isWiki: this.isWiki,
         });
         this.close();
@@ -267,25 +588,20 @@ class LinkEditorPlugin extends obsidian.Plugin {
                         clipboardText = clipboardText.trim();
                     } catch (e) {}
 
-                    // Helper function to check if string is URL-like
-                    // Only URLs that Obsidian actually auto-links (GFM spec)
                     const isUrl = (str) => {
                         if (!str) return false;
                         const trimmed = str.trim();
                         return /^https?:\/\/\S+$|^www\.\S+$/i.test(trimmed);
                     };
 
-                    // Helper to normalize URL for markdown links (add https:// if needed)
                     const normalizeUrl = (str) => {
                         if (!str) return str;
                         const trimmed = str.trim();
 
-                        // Already has protocol
                         if (/^https?:\/\//i.test(trimmed)) {
                             return trimmed;
                         }
 
-                        // Starts with www. - add https://
                         if (/^www\./i.test(trimmed)) {
                             return 'https://' + trimmed;
                         }
@@ -293,31 +609,26 @@ class LinkEditorPlugin extends obsidian.Plugin {
                         return trimmed;
                     };
 
-                    // Check if selection or clipboard is a URL
                     const isSelectionUrl = isUrl(selection);
                     const isClipboardUrl = isUrl(clipboardText);
 
-                    // Determine text and destination placement
                     let linkText = "";
                     let linkDest = "";
                     let shouldBeMarkdown = false;
 
                     if (isSelectionUrl) {
-                        // Selection is a URL
                         const original = selection.trim();
                         const normalized = normalizeUrl(original);
 
-                        // FIXED: Original URL goes to text (selected), normalized goes to destination
                         linkText = original;
                         linkDest = normalized;
                         shouldBeMarkdown = true;
-                        shouldSelectText = true; // Select the text so user can replace it
+                        shouldSelectText = true;
 
                         if (original !== normalized) {
-                            conversionNotice = `URL converted: ${original} → ${normalized}`;
+                            conversionNotice = `✓ URL converted: ${original} → ${normalized}`;
                         }
                     } else if (selection) {
-                        // Selection is text, check clipboard for URL
                         linkText = selection;
 
                         if (isClipboardUrl) {
@@ -327,14 +638,13 @@ class LinkEditorPlugin extends obsidian.Plugin {
                             shouldBeMarkdown = true;
 
                             if (original !== normalized) {
-                                conversionNotice = `URL converted: ${original} → ${normalized}`;
+                                conversionNotice = `✓ URL converted: ${original} → ${normalized}`;
                             }
                         } else {
                             linkDest = clipboardText;
                             shouldBeMarkdown = false;
                         }
                     } else if (isClipboardUrl) {
-                        // No selection, clipboard has URL
                         const original = clipboardText;
                         const normalized = normalizeUrl(original);
 
@@ -344,10 +654,9 @@ class LinkEditorPlugin extends obsidian.Plugin {
                         shouldBeMarkdown = true;
 
                         if (original !== normalized) {
-                            conversionNotice = `URL converted: ${original} → ${normalized}`;
+                            conversionNotice = `✓ URL converted: ${original} → ${normalized}`;
                         }
                     } else {
-                        // No selection, no URL
                         linkText = "";
                         linkDest = clipboardText;
                         shouldBeMarkdown = false;

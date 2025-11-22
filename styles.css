@@ -7,6 +7,24 @@
     font-size: 0.9em;
 }
 
+/* Suggestion item layout (for headings with H1/H2 on right) */
+.suggestion-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+}
+
+.suggestion-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.suggestion-aux {
+    margin-left: 8px;
+    flex-shrink: 0;
+}
+
 /* Optional: basic suggestion styling if not inherited correctly */
 .suggestion-note {
     display: block;
@@ -14,17 +32,58 @@
     font-size: 0.8em;
 }
 
-/* Conversion notice styling */
+/* Warnings container */
+.link-warnings-container {
+    margin: 8px 0;
+}
+
+/* Conversion notice (success) */
 .link-conversion-notice {
     padding: 8px 12px;
-    margin: 8px 0;
+    margin-bottom: 8px;
     background-color: var(--background-secondary);
     border-left: 3px solid var(--interactive-accent);
     border-radius: 4px;
-}
-
-.link-conversion-text {
-    color: var(--text-muted);
     font-size: 0.85em;
     font-family: var(--font-monospace);
+    color: var(--text-muted);
+}
+
+/* Warning messages */
+.link-warning {
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+
+.link-warning-error {
+    background-color: var(--background-modifier-error);
+    border-left: 3px solid var(--text-error);
+    color: var(--text-error);
+}
+
+.link-warning-caution {
+    background-color: var(--background-secondary);
+    border-left: 3px solid var(--text-warning);
+    color: var(--text-warning);
+}
+
+.link-warning-info {
+    background-color: var(--background-secondary);
+    border-left: 3px solid var(--text-muted);
+    color: var(--text-muted);
+}
+
+/* Validation hint (lighter text in error message) */
+.link-validation-hint {
+    margin-top: 4px;
+    font-size: 0.9em;
+    opacity: 0.8;
+}
+
+/* Highlight input when warning is active */
+.link-warning-highlight {
+    border-color: var(--text-warning) !important;
+    box-shadow: 0 0 0 2px rgba(var(--text-warning-rgb), 0.2) !important;
 }
