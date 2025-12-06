@@ -1,5 +1,6 @@
 /* styles.css */
 
+/* --- General Layout --- */
 .link-type-label {
     display: inline-block;
     margin-left: 10px;
@@ -7,17 +8,21 @@
     font-size: 0.9em;
 }
 
-/* Suggestion item layout (for headings with H1/H2 on right) */
-.suggestion-item {
+/* Fix: Remove the block/stacked definition for :not(:has(.suggestion-aux)) 
+   We now rely on every suggestion having 'mod-complex' applied by JS, 
+   and the default suggestion list styling takes care of stacking titles/notes. */
+.suggestion-item:has(.suggestion-aux) {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    width: 100%;
+    padding: 0 8px;
 }
 
 .suggestion-content {
     flex: 1;
     min-width: 0;
+    /* Reset to default block/flex behavior */
+    display: block; 
 }
 
 .suggestion-aux {
@@ -25,12 +30,31 @@
     flex-shrink: 0;
 }
 
-/* Optional: basic suggestion styling if not inherited correctly */
+/* --- File/Block/Heading Styling --- */
+
+/* Reset for ALL suggestion titles */
+.suggestion-title {
+    font-size: var(--font-ui-small); /* Default size for blocks/headings */
+    font-weight: 400; /* Not bold for blocks/headings */
+}
+
+/* Obsidian native File/Path styling for mod-complex (File suggestion items) */
+/* We keep this specific selector to make *file* names slightly bolder/larger */
+.suggestion-item.mod-complex .suggestion-title {
+    font-size: 1em; /* Obsidian's native file title size */
+    font-weight: 500; /* Obsidian's native file title weight (semi-bold) */
+}
+
+
+/* Styling for the secondary text (path or block ID) */
 .suggestion-note {
     display: block;
     color: var(--text-muted);
-    font-size: 0.8em;
+    font-size: var(--font-ui-small); /* Smaller font */
+    margin-top: 2px;
 }
+
+/* --- Link Modal Warnings/Notifications --- */
 
 /* Warnings container */
 .link-warnings-container {
