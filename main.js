@@ -501,13 +501,13 @@ class LinkEditModal extends obsidian.Modal {
                     e.preventDefault();
                     e.stopPropagation();
                     
-                    if (e.key === 'n') {
-                        // Use the internal moveDown method
-                        this.fileSuggest.suggestions.moveDown();
-                    } else if (e.key === 'p') {
-                        // Use the internal moveUp method
-                        this.fileSuggest.suggestions.moveUp();
-                    }
+                    const arrowKey = e.key === 'n' ? 'ArrowDown' : 'ArrowUp';
+                    const arrowEvent = new KeyboardEvent('keydown', {
+                        key: arrowKey,
+                        bubbles: true,
+                        cancelable: true
+                    });
+                    this.fileSuggest.suggestions.containerEl.dispatchEvent(arrowEvent);
                     return;
                 }
             } 
