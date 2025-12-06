@@ -1,113 +1,33 @@
-/* styles.css */
+/* STRONG focus for Link Type slider + Apply button only */
 
-/* --- General Layout --- */
-.link-type-label {
-    display: inline-block;
-    margin-left: 10px;
-    color: var(--text-muted);
-    font-size: 0.9em;
+/* Unfocused: let the theme draw them normally */
+.modal-content .setting-item-control .toggle,
+.modal-content .setting-item-control .checkbox-container,
+.modal-content .setting-item-control .toggle-component,
+.modal-content .setting-item-control .mod-cta {
+  transition:
+    box-shadow 0.1s ease-out,
+    transform 0.1s ease-out,
+    background-color 0.1s ease-out;
 }
 
-/* Fix: Remove the block/stacked definition for :not(:has(.suggestion-aux)) 
-   We now rely on every suggestion having 'mod-complex' applied by JS, 
-   and the default suggestion list styling takes care of stacking titles/notes. */
-.suggestion-item:has(.suggestion-aux) {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 8px;
-}
-
-.suggestion-content {
-    flex: 1;
-    min-width: 0;
-    /* Reset to default block/flex behavior */
-    display: block; 
-}
-
-.suggestion-aux {
-    margin-left: 8px;
-    flex-shrink: 0;
-}
-
-/* --- File/Block/Heading Styling --- */
-
-/* Reset for ALL suggestion titles */
-.suggestion-title {
-    font-size: var(--font-ui-small); /* Default size for blocks/headings */
-    font-weight: 400; /* Not bold for blocks/headings */
-}
-
-/* Obsidian native File/Path styling for mod-complex (File suggestion items) */
-/* We keep this specific selector to make *file* names slightly bolder/larger */
-.suggestion-item.mod-complex .suggestion-title {
-    font-size: 1em; /* Obsidian's native file title size */
-    font-weight: 500; /* Obsidian's native file title weight (semi-bold) */
-}
-
-
-/* Styling for the secondary text (path or block ID) */
-.suggestion-note {
-    display: block;
-    color: var(--text-muted);
-    font-size: var(--font-ui-small); /* Smaller font */
-    margin-top: 2px;
-}
-
-/* --- Link Modal Warnings/Notifications --- */
-
-/* Warnings container */
-.link-warnings-container {
-    margin: 8px 0;
-}
-
-/* Conversion notice (success) */
-.link-conversion-notice {
-    padding: 8px 12px;
-    margin-bottom: 8px;
-    background-color: var(--background-secondary);
-    border-left: 3px solid var(--interactive-accent);
-    border-radius: 4px;
-    font-size: 0.85em;
-    font-family: var(--font-monospace);
-    color: var(--text-muted);
-}
-
-/* Warning messages */
-.link-warning {
-    padding: 8px 12px;
-    margin-bottom: 8px;
-    border-radius: 4px;
-    font-size: 0.85em;
-}
-
-.link-warning-error {
-    background-color: var(--background-modifier-error);
-    border-left: 3px solid var(--text-error);
-    color: var(--text-error);
-}
-
-.link-warning-caution {
-    background-color: var(--background-secondary);
-    border-left: 3px solid var(--text-warning);
-    color: var(--text-warning);
-}
-
-.link-warning-info {
-    background-color: var(--background-secondary);
-    border-left: 3px solid var(--text-muted);
-    color: var(--text-muted);
-}
-
-/* Validation hint (lighter text in error message) */
-.link-validation-hint {
-    margin-top: 4px;
-    font-size: 0.9em;
-    opacity: 0.8;
-}
-
-/* Highlight input when warning is active */
-.link-warning-highlight {
-    border-color: var(--text-warning) !important;
-    box-shadow: 0 0 0 2px rgba(var(--text-warning-rgb), 0.2) !important;
+/* Focused: obvious change in fill, border, and size */
+.modal-content .setting-item-control .toggle:focus-visible,
+.modal-content .setting-item-control .checkbox-container:focus-visible,
+.modal-content .setting-item-control .toggle-component:focus-visible,
+.modal-content .setting-item-control .mod-cta:focus-visible {
+  outline: none;
+  /* Slight “zoom” so your eye is drawn to it */
+  transform: scale(1.05);
+  /* Thicker accent border + halo */
+  box-shadow:
+    0 0 0 2px var(--interactive-accent),
+    0 0 6px 2px color-mix(in srgb, var(--interactive-accent) 60%, transparent);
+  border-color: var(--interactive-accent);
+  border-width: 2px;
+  border-style: solid;
+  /* Darker (in light mode) or lighter (in dark mode) fill against background */
+  background-color: color-mix(in srgb,
+    var(--interactive-accent) 20%,
+    var(--background-primary) 80%);
 }
