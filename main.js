@@ -12,43 +12,117 @@ class FileSuggest extends obsidian.AbstractInputSuggest {
     }
 
     getSuggestions(query) {
-        // If it looks like a URL, don't show file suggestions
-        if (this.modal.isUrl(query)) {
-            return [];
-        }
+	// If it looks like a URL, don't show file suggestions
+	if (this.modal.isUrl(query)) {
+	    return [];
+	}
 
-        const trimmedQuery = query.trim();
+	const trimmedQuery = query.trim();
+	
+	// If not in wikilink mode, always behave like plain [[filename]] search:
+	// just suggest notes/files by name/path.
+	if (!this.modal.isWiki) {
+	    return this.getFiles(trimmedQuery);
+	}
 
-        // Pattern 1: [[## - headings in ALL files (not blocks!)
-        if (trimmedQuery === '##') {
-            return this.getAllHeadings();
-        }
+	// --- WIKILINK MODE BEHAVIOR (mirror Obsidian [[ ... ]] ) ---
 
-        // Pattern 2: [[# - headings in current file
-        if (trimmedQuery === '#') {
-            return this.getHeadingsInCurrentFile();
-        }
+	// Pattern 1: "#" at start → headings in current note
+	if (trimmedQuery.startsWith('#') && !trimmedQuery.startsWith('##')) {
+	    const headingQuery = trimmedQuery.slice(1).toLowerCase(); // Remove leading #
+	    const allHeadings = this.getHeadingsInCurrentFile();
+	    if (!headingQuery) {
+		return allHeadings; // Show all if just "#"
+	    }
+	    // Filter headings by the query after #
+	    return allHeadings.filter(h => 
+		h.heading.toLowerCase().includes(headingQuery)
+	    );
+	}
 
-        // Pattern 3: [[filename#^blockquery - blocks in specific file
-        if (trimmedQuery.includes('#^')) {
-            const parts = trimmedQuery.split('#^');
-            const fileName = parts[0];
-            const blockQuery = parts[1] || '';
-            return this.getBlocksInFile(fileName, blockQuery);
-        }
+	// Pattern 2: "##" at start → headings in entire vault
+	if (trimmedQuery.startsWith('##')) {
+	    const headingQuery = trimmedQuery.slice(2).toLowerCase(); // Remove leading ##
+	    const allHeadings = this.getAllHeadings();
+	    if (!headingQuery) {
+		return allHeadings; // Show all if just "##"
+	    }
+	    // Filter headings by the query after ##
+	    return allHeadings.filter(h => 
+		h.heading.toLowerCase().includes(headingQuery)
+	    );
+	}
 
-        // Pattern 4: [[filename#headingquery - headings in specific file
-        if (trimmedQuery.includes('#') && !trimmedQuery.startsWith('#')) {
-            const parts = trimmedQuery.split('#');
-            const fileName = parts[0];
-            const headingQuery = parts[1] || '';
-            return this.getHeadingsInFile(fileName, headingQuery);
-        }
+	// Pattern 3: "^" at start → blocks in current file
+	if (trimmedQuery.startsWith('^')) {
+	    const blockQuery = trimmedQuery.slice(1).toLowerCase(); // Remove leading ^
+	    const activeFile = this.app.workspace.getActiveFile();
+	    if (!activeFile) return [];
+	    
+	    const cache = this.app.metadataCache.getFileCache(activeFile);
+	    if (!cache || !cache.blocks) return [];
+	    
+	    const blocks = Object.keys(cache.blocks)
+		  .filter(blockId => !blockQuery || blockId.toLowerCase().includes(blockQuery))
+		  .map(blockId => ({
+		      type: 'block',
+		      blockId: blockId,
+		      file: activeFile
+		  }));
+	    return blocks;
+	}
 
-        // Pattern 5: [[ - regular file search
-        return this.getFiles(trimmedQuery);
+	// Pattern 4: filename#^blockid → blocks in specific file
+	if (trimmedQuery.includes('#^')) {
+	    const parts = trimmedQuery.split('#^');
+	    const fileName = parts[0];
+	    const blockQuery = parts[1] || '';
+	    return this.getBlocksInFile(fileName, blockQuery);
+	}
+
+	// Pattern 5: filename#heading → headings in specific file
+	if (trimmedQuery.includes('#') && !trimmedQuery.startsWith('#')) {
+	    const parts = trimmedQuery.split('#');
+	    const fileName = parts[0];
+	    const headingQuery = parts[1] || '';
+	    return this.getHeadingsInFile(fileName, headingQuery);
+	}
+
+	// Pattern 6: filename^ → blocks in specific file (without #)
+	if (trimmedQuery.includes('^') && !trimmedQuery.startsWith('^')) {
+	    const parts = trimmedQuery.split('^');
+	    const fileName = parts[0];
+	    const blockQuery = parts[1] || '';
+	    
+	    const files = this.app.vault.getFiles();
+	    const lowerFileName = fileName.toLowerCase();
+	    
+	    // Find matching file
+	    const file = files.find(f =>
+		f.basename.toLowerCase() === lowerFileName ||
+		    f.path.toLowerCase().includes(lowerFileName)
+	    );
+	    
+	    if (!file) return [];
+	    
+	    const cache = this.app.metadataCache.getFileCache(file);
+	    if (!cache || !cache.blocks) return [];
+	    
+	    const lowerBlockQuery = blockQuery.toLowerCase();
+	    return Object.keys(cache.blocks)
+		.filter(blockId => !blockQuery || blockId.toLowerCase().includes(lowerBlockQuery))
+		.map(blockId => ({
+		    type: 'block',
+		    blockId: blockId,
+		    file: file
+		}));
+	}
+
+	// Pattern 7: default [[...]] file search
+	return this.getFiles(trimmedQuery);
     }
 
+    
     getFiles(query) {
         const files = this.app.vault.getFiles();
         const lowerQuery = query.toLowerCase();
@@ -150,55 +224,78 @@ class FileSuggest extends obsidian.AbstractInputSuggest {
             }));
     }
 
+    
     renderSuggestion(item, el) {
-        if (item.type === 'heading') {
-            // Create main container
-            const container = el.createDiv({ cls: "suggestion-item" });
+	if (item.type === 'heading') {
+	    // Create main container
+	    const container = el.createDiv({ cls: "suggestion-item" });
 
-            // Heading text on left
-            const titleDiv = container.createDiv({ cls: "suggestion-content" });
-            titleDiv.createSpan({ 
-                text: item.heading,
-                cls: "suggestion-title"
-            });
+	    // Heading text on left
+	    const titleDiv = container.createDiv({ cls: "suggestion-content" });
+	    titleDiv.createSpan({
+		text: item.heading,
+		cls: "suggestion-title"
+	    });
 
-            // H1, H2, etc. on right
-            const auxDiv = container.createDiv({ cls: "suggestion-aux" });
-            auxDiv.createSpan({ 
-                text: `H${item.level}`,
-                cls: "suggestion-note"
-            });
+	    // H1, H2, etc. on right
+	    const auxDiv = container.createDiv({ cls: "suggestion-aux" });
+	    auxDiv.createSpan({
+		text: `H${item.level}`,
+		cls: "suggestion-note"
+	    });
 
-            // File path below (if not current file or if showing all headings)
-            if (item.file) {
-                const currentFile = this.app.workspace.getActiveFile();
-                const showPath = !currentFile || item.file.path !== currentFile.path;
-                if (showPath) {
-                    container.createDiv({
-                        text: item.file.path,
-                        cls: "suggestion-note"
-                    });
-                }
-            }
-        } else if (item.type === 'block') {
-            // Render block with ^ prefix
-            el.createEl("div", { 
-                text: `^${item.blockId}`,
-                cls: "suggestion-title" 
-            });
-            if (item.file) {
-                el.createEl("small", { 
-                    text: item.file.path, 
-                    cls: "suggestion-note" 
-                });
-            }
-        } else {
-            // Render file (TFile object)
-            el.createEl("div", { text: item.basename, cls: "suggestion-title" });
-            if (item.path !== item.name) {
-                el.createEl("small", { text: item.path, cls: "suggestion-note" });
-            }
-        }
+	    // File path below - show only if:
+	    // 1. We're searching ALL headings (## pattern), OR
+	    // 2. We're searching current file headings (# pattern) AND there's ambiguity
+	    // For filename#heading pattern, DON'T show the path since filename is already in input
+	    if (item.file) {
+		const currentQuery = this.textInputEl.value.trim();
+		const currentFile = this.app.workspace.getActiveFile();
+		
+		// Show path if searching across vault (## or filename# from another context)
+		// Don't show if we're in "filename#" pattern (user already typed the filename)
+		const isFilenameHeadingPattern = currentQuery.includes('#') && 
+		      !currentQuery.startsWith('#') && 
+		    !currentQuery.startsWith('##');
+		
+		const showPath = !isFilenameHeadingPattern && 
+		      (!currentFile || item.file.path !== currentFile.path);
+		
+		if (showPath) {
+		    container.createDiv({
+			text: item.file.path,
+			cls: "suggestion-note"
+		    });
+		}
+	    }
+	} else if (item.type === 'block') {
+	    // Render block with ^ prefix
+	    el.createEl("div", {
+		text: `^${item.blockId}`,
+		cls: "suggestion-title"
+	    });
+	    
+	    // For blocks, similar logic: don't show path if filename already specified
+	    if (item.file) {
+		const currentQuery = this.textInputEl.value.trim();
+		const isFilenameBlockPattern = 
+		      (currentQuery.includes('#^') && currentQuery.indexOf('#^') > 0) ||
+		      (currentQuery.includes('^') && !currentQuery.startsWith('^') && currentQuery.indexOf('^') > 0);
+		
+		if (!isFilenameBlockPattern) {
+		    el.createEl("small", {
+			text: item.file.path,
+			cls: "suggestion-note"
+		    });
+		}
+	    }
+	} else {
+	    // Render file (TFile object)
+	    el.createEl("div", { text: item.basename, cls: "suggestion-title" });
+	    if (item.path !== item.name) {
+		el.createEl("small", { text: item.path, cls: "suggestion-note" });
+	    }
+	}
     }
 
     selectSuggestion(item) {
