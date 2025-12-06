@@ -1,10 +1,11 @@
-/* main.js */
 'use strict';
 
 var obsidian = require('obsidian');
 
 // --- File Suggester Class with Heading/Block Support ---
+
 class FileSuggest extends obsidian.AbstractInputSuggest {
+
     constructor(app, textInputEl, modal) {
         super(app, textInputEl);
         this.modal = modal;
@@ -60,16 +61,42 @@ class FileSuggest extends obsidian.AbstractInputSuggest {
 	    if (!activeFile) return [];
 	    
 	    const cache = this.app.metadataCache.getFileCache(activeFile);
-	    if (!cache || !cache.blocks) return [];
+			if (!cache) return [];
 	    
-	    const blocks = Object.keys(cache.blocks)
-		  .filter(blockId => !blockQuery || blockId.toLowerCase().includes(blockQuery))
-		  .map(blockId => ({
+			const blocks = [];
+
+			// Add existing block IDs
+			if (cache.blocks) {
+				Object.keys(cache.blocks).forEach(blockId => {
+					if (!blockQuery || blockId.toLowerCase().includes(blockQuery)) {
+						blocks.push({
 		      type: 'block',
 		      blockId: blockId,
-		      file: activeFile
-		  }));
-	    return blocks;
+							file: activeFile,
+							hasId: true
+						});
+					}
+				});
+			}
+
+			// Add sections that could become blocks
+			if (cache.sections) {
+				cache.sections.forEach((section, idx) => {
+					// Generate a preview identifier (line number or heading)
+					const identifier = `L${section.position.start.line}`;
+					if (!blockQuery || identifier.toLowerCase().includes(blockQuery)) {
+						blocks.push({
+							type: 'block',
+							blockId: identifier,
+							file: activeFile,
+							hasId: false,
+							section: section
+						});
+					}
+				});
+			}
+
+			return blocks.slice(0, 50); // Limit results
 	}
 
 	// Pattern 4: filename#^blockid → blocks in specific file
@@ -88,7 +115,7 @@ class FileSuggest extends obsidian.AbstractInputSuggest {
 	    return this.getHeadingsInFile(fileName, headingQuery);
 	}
 
-	// Pattern 6: filename^ → blocks in specific file (without #)
+		// Pattern 6: filename^blockid → blocks in specific file (without #)
 	if (trimmedQuery.includes('^') && !trimmedQuery.startsWith('^')) {
 	    const parts = trimmedQuery.split('^');
 	    const fileName = parts[0];
@@ -106,32 +133,56 @@ class FileSuggest extends obsidian.AbstractInputSuggest {
 	    if (!file) return [];
 	    
 	    const cache = this.app.metadataCache.getFileCache(file);
-	    if (!cache || !cache.blocks) return [];
+			if (!cache) return [];
 	    
+			const blocks = [];
+
+			// Add existing block IDs
+			if (cache.blocks) {
+				Object.keys(cache.blocks).forEach(blockId => {
 	    const lowerBlockQuery = blockQuery.toLowerCase();
-	    return Object.keys(cache.blocks)
-		.filter(blockId => !blockQuery || blockId.toLowerCase().includes(lowerBlockQuery))
-		.map(blockId => ({
+					if (!blockQuery || blockId.toLowerCase().includes(lowerBlockQuery)) {
+						blocks.push({
 		    type: 'block',
 		    blockId: blockId,
-		    file: file
-		}));
+							file: file,
+							hasId: true
+						});
+					}
+				});
+			}
+
+			// Add sections
+			if (cache.sections) {
+				cache.sections.forEach((section, idx) => {
+					const identifier = `L${section.position.start.line}`;
+					const lowerBlockQuery = blockQuery.toLowerCase();
+					if (!blockQuery || identifier.toLowerCase().includes(lowerBlockQuery)) {
+						blocks.push({
+							type: 'block',
+							blockId: identifier,
+							file: file,
+							hasId: false,
+							section: section
+						});
+					}
+				});
+			}
+
+			return blocks.slice(0, 50);
 	}
 
 	// Pattern 7: default [[...]] file search
 	return this.getFiles(trimmedQuery);
     }
-
     
     getFiles(query) {
         const files = this.app.vault.getFiles();
         const lowerQuery = query.toLowerCase();
-
         const matches = files.filter(file => 
             file.path.toLowerCase().contains(lowerQuery) || 
             file.basename.toLowerCase().contains(lowerQuery)
         );
-
         // Sort by recency
         matches.sort((a, b) => b.stat.mtime - a.stat.mtime);
         return matches.slice(0, 20);
@@ -140,10 +191,8 @@ class FileSuggest extends obsidian.AbstractInputSuggest {
     getHeadingsInCurrentFile() {
         const activeFile = this.app.workspace.getActiveFile();
         if (!activeFile) return [];
-
         const cache = this.app.metadataCache.getFileCache(activeFile);
         if (!cache || !cache.headings) return [];
-
         return cache.headings.map(h => ({
             type: 'heading',
             heading: h.heading,
@@ -155,7 +204,6 @@ class FileSuggest extends obsidian.AbstractInputSuggest {
     getAllHeadings() {
         const files = this.app.vault.getMarkdownFiles();
         const allHeadings = [];
-
         for (const file of files) {
             const cache = this.app.metadataCache.getFileCache(file);
             if (cache && cache.headings) {
@@ -169,25 +217,20 @@ class FileSuggest extends obsidian.AbstractInputSuggest {
                 });
             }
         }
-
         return allHeadings.slice(0, 50); // Limit to 50 results
     }
 
     getHeadingsInFile(fileName, headingQuery = '') {
         const files = this.app.vault.getFiles();
         const lowerFileName = fileName.toLowerCase();
-
         // Find matching file
         const file = files.find(f => 
             f.basename.toLowerCase() === lowerFileName ||
             f.path.toLowerCase().includes(lowerFileName)
         );
-
         if (!file) return [];
-
         const cache = this.app.metadataCache.getFileCache(file);
         if (!cache || !cache.headings) return [];
-
         const lowerHeadingQuery = headingQuery.toLowerCase();
         return cache.headings
             .filter(h => !headingQuery || h.heading.toLowerCase().includes(lowerHeadingQuery))
@@ -202,28 +245,50 @@ class FileSuggest extends obsidian.AbstractInputSuggest {
     getBlocksInFile(fileName, blockQuery = '') {
         const files = this.app.vault.getFiles();
         const lowerFileName = fileName.toLowerCase();
-
         // Find matching file
         const file = files.find(f => 
             f.basename.toLowerCase() === lowerFileName ||
             f.path.toLowerCase().includes(lowerFileName)
         );
-
         if (!file) return [];
-
         const cache = this.app.metadataCache.getFileCache(file);
-        if (!cache || !cache.blocks) return [];
+		if (!cache) return [];
 
+		const blocks = [];
         const lowerBlockQuery = blockQuery.toLowerCase();
-        return Object.keys(cache.blocks)
-            .filter(blockId => !blockQuery || blockId.toLowerCase().includes(lowerBlockQuery))
-            .map(blockId => ({
+
+		// Add existing block IDs
+		if (cache.blocks) {
+			Object.keys(cache.blocks).forEach(blockId => {
+				if (!blockQuery || blockId.toLowerCase().includes(lowerBlockQuery)) {
+					blocks.push({
                 type: 'block',
                 blockId: blockId,
-                file: file
-            }));
+						file: file,
+						hasId: true
+					});
+				}
+			});
+		}
+
+		// Add sections
+		if (cache.sections) {
+			cache.sections.forEach((section, idx) => {
+				const identifier = `L${section.position.start.line}`;
+				if (!blockQuery || identifier.toLowerCase().includes(lowerBlockQuery)) {
+					blocks.push({
+						type: 'block',
+						blockId: identifier,
+						file: file,
+						hasId: false,
+						section: section
+					});
+				}
+			});
     }
 
+		return blocks.slice(0, 50);
+	}
     
     renderSuggestion(item, el) {
 	if (item.type === 'heading') {
@@ -300,7 +365,6 @@ class FileSuggest extends obsidian.AbstractInputSuggest {
 
     selectSuggestion(item) {
         let linkValue;
-
         if (item.type === 'heading') {
             // Format: #heading or filename#heading (NO leading #)
             const currentFile = this.app.workspace.getActiveFile();
@@ -331,7 +395,6 @@ class FileSuggest extends obsidian.AbstractInputSuggest {
                 linkValue = item.name;
             }
         }
-
         this.textInputEl.value = linkValue;
         this.textInputEl.trigger("input");
         this.close();
@@ -460,18 +523,22 @@ class LinkEditModal extends obsidian.Modal {
                 if (e.target === this.toggleComponent.toggleEl) {
                     return;
                 }
+
                 if (this.fileSuggest.isOpen) {
                     return;
                 }
+
                 e.preventDefault();
                 this.submit();
             } 
+
             // Escape cancels and closes
             else if (e.key === "Escape") {
                 if (this.fileSuggest.isOpen) {
                     this.fileSuggest.close();
                     return;
                 }
+
                 this.close();
             }
         });
@@ -491,17 +558,21 @@ class LinkEditModal extends obsidian.Modal {
         if (!linkText || linkText.length === 0) {
             this.textInput.inputEl.focus();
         }
+
         else if (!linkDest || linkDest.length === 0) {
             this.destInput.inputEl.focus();
         }
+
         else if (destLength > 500 || this.isAlmostUrl(linkDest)) {
             this.destInput.inputEl.focus();
             this.destInput.inputEl.select();
         }
+
         else if (this.shouldSelectText) {
             this.textInput.inputEl.focus();
             this.textInput.inputEl.select();
         }
+
         else {
             this.destInput.inputEl.focus();
             if (linkDest && linkDest.length > 0) {
@@ -525,7 +596,6 @@ class LinkEditModal extends obsidian.Modal {
     handleDestInput() {
         const val = this.destInput.getValue();
         const isNowUrl = this.isUrl(val);
-
         if (isNowUrl) {
             this.isWiki = false;
             this.toggleComponent.setValue(false);
@@ -546,7 +616,6 @@ class LinkEditModal extends obsidian.Modal {
 
         const dest = this.destInput.getValue();
         const destLength = dest ? dest.length : 0;
-
         const warnings = [];
 
         if (this.isWiki && this.isUrl(dest)) {
@@ -577,7 +646,6 @@ class LinkEditModal extends obsidian.Modal {
                     text: warning.text
                 });
             });
-
             this.destInput.inputEl.classList.add("link-warning-highlight");
         }
     }
@@ -593,9 +661,11 @@ class LinkEditModal extends obsidian.Modal {
             const errorDiv = this.warningsContainer.createEl("div", {
                 cls: "link-warning link-validation-error link-warning-error"
             });
+
             errorDiv.createEl("div", {
                 text: "⚠️ Error: Both Link Text and Destination are required."
             });
+
             errorDiv.createEl("div", {
                 text: "Press Escape to cancel and close without making changes.",
                 cls: "link-validation-hint"
@@ -680,6 +750,7 @@ class LinkEditorPlugin extends obsidian.Plugin {
                 if (!link) {
                     const selection = editor.getSelection();
                     let clipboardText = "";
+
                     try { 
                         clipboardText = await navigator.clipboard.readText();
                         clipboardText = clipboardText.trim();
@@ -694,7 +765,6 @@ class LinkEditorPlugin extends obsidian.Plugin {
                     const normalizeUrl = (str) => {
                         if (!str) return str;
                         const trimmed = str.trim();
-
                         if (/^https?:\/\//i.test(trimmed)) {
                             return trimmed;
                         }
@@ -708,7 +778,6 @@ class LinkEditorPlugin extends obsidian.Plugin {
 
                     const isSelectionUrl = isUrl(selection);
                     const isClipboardUrl = isUrl(clipboardText);
-
                     let linkText = "";
                     let linkDest = "";
                     let shouldBeMarkdown = false;
@@ -716,24 +785,20 @@ class LinkEditorPlugin extends obsidian.Plugin {
                     if (isSelectionUrl) {
                         const original = selection.trim();
                         const normalized = normalizeUrl(original);
-
                         linkText = original;
                         linkDest = normalized;
                         shouldBeMarkdown = true;
                         shouldSelectText = true;
-
                         if (original !== normalized) {
                             conversionNotice = `✓ URL converted: ${original} → ${normalized}`;
                         }
                     } else if (selection) {
                         linkText = selection;
-
                         if (isClipboardUrl) {
                             const original = clipboardText;
                             const normalized = normalizeUrl(original);
                             linkDest = normalized;
                             shouldBeMarkdown = true;
-
                             if (original !== normalized) {
                                 conversionNotice = `✓ URL converted: ${original} → ${normalized}`;
                             }
@@ -744,12 +809,10 @@ class LinkEditorPlugin extends obsidian.Plugin {
                     } else if (isClipboardUrl) {
                         const original = clipboardText;
                         const normalized = normalizeUrl(original);
-
                         linkText = normalized;
                         linkDest = normalized;
                         shouldSelectText = true;
                         shouldBeMarkdown = true;
-
                         if (original !== normalized) {
                             conversionNotice = `✓ URL converted: ${original} → ${normalized}`;
                         }
@@ -796,6 +859,7 @@ class LinkEditorPlugin extends obsidian.Plugin {
                     } else {
                         newCh = enteredFromLeft ? start + replacement.length : start;
                     }
+
                     editor.setCursor({ line: cursor.line, ch: newCh });
                 }, shouldSelectText, conversionNotice).open();
             },
