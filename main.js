@@ -685,7 +685,7 @@ class LinkEditModal extends obsidian.Modal {
                     });
                 } else {
                     warnings.push({
-                        text: '⚠️ Invalid Wiki Link destination. Contains forbidden characters (| ^ : %% [[ ]] * " ? \ / in filename).',
+                        text: '⚠️ Invalid Wiki Link destination. Contains forbidden characters (| ^ : %% [[ ]] * " ? \\ / in filename).',
                         cls: 'link-warning-error',
                     });
                 }
