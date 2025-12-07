@@ -307,6 +307,116 @@ class FileSuggest extends obsidian.AbstractInputSuggest {
     }
 }
 
+
+// --- Link Format Conversion Helpers ---
+
+function isValidWikiLink(dest) {
+	if (!dest) return false;
+	
+	// WikiLinks don't support URLs
+	if (/^https?:\/\//i.test(dest)) return false;
+	
+	// WikiLinks don't support angle brackets or parens
+	if (dest.includes('<') || dest.includes('>') || dest.includes('(') || dest.includes(')')) return false;
+	
+	// Check for invalid characters in the filename portion
+	// Split by # to separate filename from heading/block reference
+	const parts = dest.split('#');
+	const filename = parts[0];
+	
+	// Filename portion cannot contain: | ^ : %% [[ ]]
+	// These are Obsidian's forbidden filename characters
+	if (filename.includes('|')) return false;
+	if (filename.includes('^')) return false;
+	if (filename.includes(':')) return false;
+	if (filename.includes('%%')) return false;
+	if (filename.includes('[[') || filename.includes(']]')) return false;
+	// Also check OS-level forbidden characters
+	if (filename.includes('*') || filename.includes('"') || filename.includes('?')) return false;
+	if (filename.includes('\\') || filename.includes('/')) return false;
+	
+	// If there's a heading/block reference part (after #), validate it
+	if (parts.length > 1) {
+		const reference = parts.slice(1).join('#'); // Rejoin in case # appears in heading
+		
+		// Block reference (starts with ^)
+		if (reference.startsWith('^')) {
+			const blockId = reference.slice(1);
+			// Block IDs should only contain alphanumeric and hyphens
+			if (!/^[a-zA-Z0-9-]+$/.test(blockId)) return false;
+		}
+		// Heading reference - headings can contain most characters except [[ ]] | %%
+		else {
+			if (reference.includes('[[') || reference.includes(']]')) return false;
+			if (reference.includes('|')) return false;
+			if (reference.includes('%%')) return false;
+		}
+	}
+	
+	return true;
+}
+
+function isValidMarkdownLink(dest) {
+	if (!dest) return false;
+	
+	// Valid if it's a URL
+	if (/^https?:\/\//i.test(dest)) return true;
+	
+	// Check for double angle brackets (invalid)
+	if (dest.startsWith('<<') || dest.endsWith('>>')) return false;
+	
+	// Check if wrapped in single angle brackets (valid for paths with spaces)
+	if (dest.startsWith('<') && dest.endsWith('>')) {
+		// Must not have double brackets
+		const inner = dest.slice(1, -1);
+		if (inner.includes('<') || inner.includes('>')) return false;
+		return true;
+	}
+	
+	// Not wrapped - check for problematic unencoded characters
+	// Spaces must be encoded
+	if (dest.includes(' ')) return false;
+	
+	// Check for unencoded ^ (must be %5E)
+	// But allow it in the pattern filename#^ where it's part of block reference syntax
+	if (dest.includes('^')) {
+		// Must be properly encoded as %5E or be part of #^ pattern at the very end
+		if (!dest.includes('%5E') && !dest.match(/#\^[a-zA-Z0-9-]*$/)) return false;
+	}
+	
+	return true;
+}
+
+function wikiToMarkdown(dest) {
+	if (!dest) return dest;
+	// If it's already a URL, return as-is
+	if (/^https?:\/\//i.test(dest)) return dest;
+	// If it already has angle brackets, return as-is (already converted)
+	if (dest.startsWith('<') && dest.endsWith('>')) return dest;
+	// Encode special characters for markdown
+	let encoded = dest.replace(/ /g, '%20').replace(/\^/g, '%5E');
+	return encoded;
+}
+
+function markdownToWiki(dest) {
+	if (!dest) return dest;
+	// Remove angle brackets if present
+	let cleaned = dest;
+	if (dest.startsWith('<') && dest.endsWith('>')) {
+		cleaned = dest.slice(1, -1);
+	}
+	// Decode URL encoding
+	try {
+		cleaned = decodeURIComponent(cleaned);
+	} catch (e) {
+		// If decode fails, manually decode common cases
+		cleaned = cleaned.replace(/%20/g, ' ').replace(/%5E/gi, '^');
+	}
+	// If it's a URL, cannot convert to wikilink
+	if (/^https?:\/\//i.test(cleaned)) return null;
+	return cleaned;
+}
+
 // --- Link Edit Modal ---
 
 class LinkEditModal extends obsidian.Modal {
@@ -374,6 +484,18 @@ class LinkEditModal extends obsidian.Modal {
                 toggle
                     .setValue(this.isWiki)
                     .onChange(value => {
+                        const dest = this.destInput.getValue();
+                        if (value && !this.isWiki) {
+                            const converted = markdownToWiki(dest);
+                            if (converted !== null && converted !== dest) {
+                                this.destInput.setValue(converted);
+                            }
+                        } else if (!value && this.isWiki) {
+                            const converted = wikiToMarkdown(dest);
+                            if (converted !== dest) {
+                                this.destInput.setValue(converted);
+                            }
+                        }
                         this.isWiki = value;
                         this.updateUIState();
                     });
@@ -382,6 +504,18 @@ class LinkEditModal extends obsidian.Modal {
                     if (e.key === ' ' || e.key === 'Spacebar') {
                         e.preventDefault();
                         const newValue = !toggle.getValue();
+                        const dest = this.destInput.getValue();
+                        if (newValue && !this.isWiki) {
+                            const converted = markdownToWiki(dest);
+                            if (converted !== null && converted !== dest) {
+                                this.destInput.setValue(converted);
+                            }
+                        } else if (!newValue && this.isWiki) {
+                            const converted = wikiToMarkdown(dest);
+                            if (converted !== dest) {
+                                this.destInput.setValue(converted);
+                            }
+                        }
                         toggle.setValue(newValue);
                         this.isWiki = newValue;
                         this.updateUIState();
@@ -539,6 +673,38 @@ class LinkEditModal extends obsidian.Modal {
                 cls: 'link-warning-error',
             });
         }
+
+        // Check destination validity for current link type
+        if (dest && !this.isUrl(dest)) {
+            if (this.isWiki && !isValidWikiLink(dest)) {
+                const converted = wikiToMarkdown(dest);
+                if (converted !== dest) {
+                    warnings.push({
+                        text: '⚠️ Invalid Wiki Link destination. Can be converted - toggle Link Type above.',
+                        cls: 'link-warning-caution',
+                    });
+                } else {
+                    warnings.push({
+                        text: '⚠️ Invalid Wiki Link destination. Contains forbidden characters (| ^ : %% [[ ]] * " ? \ / in filename).',
+                        cls: 'link-warning-error',
+                    });
+                }
+            } else if (!this.isWiki && !isValidMarkdownLink(dest)) {
+                const converted = markdownToWiki(dest);
+                if (converted !== null) {
+                    warnings.push({
+                        text: '⚠️ Invalid Markdown link destination. Can be converted - toggle Link Type above.',
+                        cls: 'link-warning-caution',
+                    });
+                } else {
+                    warnings.push({
+                        text: '⚠️ Invalid Markdown destination. Spaces and ^ must be encoded or wrapped in <...>.',
+                        cls: 'link-warning-error',
+                    });
+                }
+            }
+        }
+
         if (!this.isUrl(dest) && this.isAlmostUrl(dest)) {
             warnings.push({
                 text: '⚠️ Warning: Destination looks like a URL but may have typos (check protocol).',
