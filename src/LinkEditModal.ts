@@ -11,6 +11,9 @@ export class LinkEditModal extends Modal {
 	isWiki: boolean;
 	wasUrl: boolean;
 	isNewLink: boolean;
+	clipboardUsedText: boolean;
+	clipboardUsedDest: boolean;
+	conversionNoticeEl!: HTMLElement | null;
 
 	textInput!: TextComponent;
 	destInput!: TextComponent;
@@ -37,6 +40,21 @@ export class LinkEditModal extends Modal {
 		this.isWiki = false;
 		this.wasUrl = false;
 		this.isNewLink = isNewLink || false;
+		this.conversionNoticeEl = null;
+		
+		// Parse the conversion notice to determine what was used from clipboard
+		this.clipboardUsedText = false;
+		this.clipboardUsedDest = false;
+		if (conversionNotice) {
+			if (conversionNotice.includes("text & destination")) {
+				this.clipboardUsedText = true;
+				this.clipboardUsedDest = true;
+			} else if (conversionNotice.includes("text")) {
+				this.clipboardUsedText = true;
+			} else if (conversionNotice.includes("destination")) {
+				this.clipboardUsedDest = true;
+			}
+		}
 	}
 
 	onOpen(): void {
@@ -57,6 +75,11 @@ export class LinkEditModal extends Modal {
 			this.textInput = text;
 			text.setValue(this.link.text);
 			text.inputEl.style.width = "100%";
+			text.inputEl.addEventListener("input", () => {
+				this.clearValidationErrors();
+				this.updateUIState();
+				this.updateConversionNotice();
+			});
 		});
 
 		// Destination
@@ -68,6 +91,7 @@ export class LinkEditModal extends Modal {
 			this.fileSuggest = new FileSuggest(this.app, text.inputEl, this);
 			text.inputEl.addEventListener("input", () => {
 				this.handleDestInput();
+				this.updateConversionNotice();
 			});
 		});
 
@@ -76,7 +100,7 @@ export class LinkEditModal extends Modal {
 
 		// Conversion notice
 		if (this.conversionNotice) {
-			this.warningsContainer.createEl("div", {
+			this.conversionNoticeEl = this.warningsContainer.createEl("div", {
 				cls: "link-conversion-notice",
 				text: this.conversionNotice,
 			});
@@ -136,7 +160,6 @@ export class LinkEditModal extends Modal {
 		// Embed checkbox
 		const embedSetting = new Setting(contentEl)
 			.setName("Embed content")
-			.setDesc("Preview content inline (prefix with !)")
 			.addToggle((toggle) => {
 				this.embedToggle = toggle;
 				toggle.setValue(this.link.isEmbed || false);
@@ -328,7 +351,45 @@ export class LinkEditModal extends Modal {
 			this.toggleComponent.setValue(false);
 		}
 		this.wasUrl = isNowUrl;
+		this.clearValidationErrors();
 		this.updateUIState();
+	}
+
+	clearValidationErrors(): void {
+		const existingValidation = this.warningsContainer.querySelectorAll(".link-validation-error");
+		existingValidation.forEach((w) => w.remove());
+		this.textInput.inputEl.classList.remove("link-warning-highlight");
+		this.destInput.inputEl.classList.remove("link-warning-highlight");
+	}
+
+	updateConversionNotice(): void {
+		if (!this.conversionNoticeEl) return;
+		
+		const currentText = this.textInput.getValue();
+		const currentDest = this.destInput.getValue();
+		
+		// Check if the current values still match what was from clipboard
+		const textStillFromClipboard = this.clipboardUsedText && currentText === this.link.text;
+		const destStillFromClipboard = this.clipboardUsedDest && currentDest === this.link.destination;
+		
+		// If neither is from clipboard anymore, remove the notice
+		if (!textStillFromClipboard && !destStillFromClipboard) {
+			this.conversionNoticeEl.remove();
+			this.conversionNoticeEl = null;
+			return;
+		}
+		
+		// Update the notice text based on what's still from clipboard
+		let noticeText = "Used ";
+		if (textStillFromClipboard && destStillFromClipboard) {
+			noticeText += "text & destination from link in clipboard";
+		} else if (textStillFromClipboard) {
+			noticeText += "text from link in clipboard";
+		} else if (destStillFromClipboard) {
+			noticeText += "destination from link in clipboard";
+		}
+		
+		this.conversionNoticeEl.textContent = noticeText;
 	}
 
 	/**
@@ -352,8 +413,12 @@ export class LinkEditModal extends Modal {
 		this.textInput.inputEl.classList.remove("link-warning-highlight");
 
 		const dest = this.destInput.getValue();
+		const linkText = this.textInput.getValue();
 		const destLength = dest ? dest.length : 0;
 		const warnings: { text: string; cls: string }[] = [];
+
+		// Note: We no longer warn about empty link text in markdown links
+		// as they are now allowed (like in Obsidian)
 
 		if (this.isWiki && this.isUrl(dest)) {
 			warnings.push({
@@ -422,35 +487,33 @@ export class LinkEditModal extends Modal {
 		const linkText = this.textInput.getValue().trim();
 		const linkDest = this.destInput.getValue().trim();
 
-		if (!linkText || !linkDest) {
-			const existingValidation =
-				this.warningsContainer.querySelectorAll(".link-validation-error");
-			existingValidation.forEach((w) => w.remove());
+		// Clear previous validation errors
+		this.clearValidationErrors();
 
+		// Validation: destination is always required
+		if (!linkDest) {
 			const errorDiv = this.warningsContainer.createEl("div", {
 				cls: "link-warning link-validation-error link-warning-error",
 			});
 			errorDiv.createEl("div", {
-				text: "⚠️ Error: Both Link Text and Destination are required.",
+				text: "⚠️ Error: Destination is required.",
 			});
 			errorDiv.createEl("div", {
 				text: "Press Escape to cancel and close without making changes.",
 				cls: "link-validation-hint",
 			});
 
-			if (!linkText) {
-				this.textInput.inputEl.focus();
-				this.textInput.inputEl.classList.add("link-warning-highlight");
-			} else if (!linkDest) {
-				this.destInput.inputEl.focus();
-				this.destInput.inputEl.classList.add("link-warning-highlight");
-			}
-
+			this.destInput.inputEl.focus();
+			this.destInput.inputEl.classList.add("link-warning-highlight");
 			return;
 		}
 
+		// For both markdown links and wikilinks with empty text, use destination as text
+		// This allows markdown links with no text (like Obsidian does)
+		const finalText = !linkText ? linkDest : linkText;
+
 		this.onSubmit({
-			text: linkText,
+			text: finalText,
 			destination: linkDest,
 			isWiki: this.isWiki,
 			isEmbed: this.embedToggle.getValue(),

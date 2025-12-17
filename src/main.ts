@@ -233,6 +233,7 @@ export default class LinkEditorPlugin extends Plugin {
 							linkText = "";
 							linkDest = clipboardText;
 							shouldBeMarkdown = false;
+							// Don't show any message when clipboard doesn't contain a valid link
 						}
 					}
 
