@@ -216,30 +216,6 @@ export class LinkEditModal extends Modal {
 				return;
 			}
 
-			// Ctrl+N / Ctrl+P to navigate suggestions
-			if (
-				e.ctrlKey &&
-				(e.key === "n" || e.key === "p") &&
-				document.activeElement === this.destInput.inputEl
-			) {
-				if (this.fileSuggest.isSuggestOpen) {
-					e.preventDefault();
-					e.stopPropagation();
-					const arrowKey = e.key === "n" ? "ArrowDown" : "ArrowUp";
-					const container = document.querySelector(".suggestion-container");
-					if (container) {
-						container.dispatchEvent(
-							new KeyboardEvent("keydown", {
-								key: arrowKey,
-								bubbles: true,
-								cancelable: true,
-							})
-						);
-					}
-					return;
-				}
-			}
-
 			// Enter
 			if (e.key === "Enter") {
 				const isOpen = this.fileSuggest.isSuggestOpen;
