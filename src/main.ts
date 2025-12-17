@@ -22,7 +22,6 @@ export default class LinkEditorPlugin extends Plugin {
 				const line = editor.getLine(cursor.line);
 
 				const mdRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-				const wikiRegex = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
 
 				let match: RegExpExecArray | null;
 				let link: LinkInfo | null = null;
@@ -43,13 +42,46 @@ export default class LinkEditorPlugin extends Plugin {
 
 				// Wiki
 				if (!link) {
-					while ((match = wikiRegex.exec(line)) !== null) {
-						start = match.index;
-						end = match.index + match[0].length;
+					// Find all wikilinks in the line
+					const wikiLinkMatches = [];
+					let startIndex = 0;
+					while (true) {
+						const openIndex = line.indexOf('[[', startIndex);
+						if (openIndex === -1) break;
+						
+						const closeIndex = line.indexOf(']]', openIndex);
+						if (closeIndex === -1) break;
+						
+						const fullMatch = line.substring(openIndex, closeIndex + 2);
+						const innerContent = line.substring(openIndex + 2, closeIndex);
+						const lastPipeIndex = innerContent.lastIndexOf('|');
+						
+						let destination, text;
+						if (lastPipeIndex === -1) {
+							destination = innerContent.trim();
+							text = destination;
+						} else {
+							destination = innerContent.substring(0, lastPipeIndex).trim();
+							text = innerContent.substring(lastPipeIndex + 1).trim();
+						}
+						
+						wikiLinkMatches.push({
+							index: openIndex,
+							match: fullMatch,
+							groups: [destination, text]
+						});
+						
+						startIndex = closeIndex + 2;
+					}
+					
+					// Check if cursor is within any of the found wikilinks
+					for (const wikiMatch of wikiLinkMatches) {
+						start = wikiMatch.index;
+						end = wikiMatch.index + wikiMatch.match.length;
 						if (cursor.ch >= start && cursor.ch <= end) {
 							link = {
-								destination: match[1],
-								text: match[2] ?? match[1],
+								destination: wikiMatch.groups[0],
+								text: wikiMatch.groups[1],
 								isWiki: true,
 							};
 							enteredFromLeft = cursor.ch <= start + 2;

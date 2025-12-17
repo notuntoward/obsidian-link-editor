@@ -156,11 +156,21 @@ export function parseWikiLink(text: string): { text: string; destination: string
 	if (!text) return null;
 	
 	// Match wiki link pattern: [[filename|display text]] or [[filename]]
-	const wikiLinkMatch = text.match(/^\[\[([^\[\]|]+)(?:\|([^\[\]]+))?\]\]$/);
-	if (!wikiLinkMatch) return null;
+	// Using a more specific pattern to correctly handle the pipe character
+	// We need to find the last pipe before the closing brackets to separate destination from display text
+	const innerContent = text.slice(2, -2); // Remove [[ and ]]
+	const lastPipeIndex = innerContent.lastIndexOf('|');
 	
-	const destination = wikiLinkMatch[1].trim();
-	const linkText = wikiLinkMatch[2] ? wikiLinkMatch[2].trim() : destination;
+	let destination, linkText;
+	if (lastPipeIndex === -1) {
+		// No display text, just destination
+		destination = innerContent.trim();
+		linkText = destination;
+	} else {
+		// Split at the last pipe to get destination and display text
+		destination = innerContent.substring(0, lastPipeIndex).trim();
+		linkText = innerContent.substring(lastPipeIndex + 1).trim();
+	}
 	
 	return { text: linkText, destination };
 }
