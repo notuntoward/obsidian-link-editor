@@ -157,7 +157,13 @@ export class LinkEditModal extends Modal {
 
 				const step = forward ? 1 : -1;
 				const nextIndex = (index + step + focusable.length) % focusable.length;
-				focusable[nextIndex].focus();
+				const nextElement = focusable[nextIndex];
+				nextElement.focus();
+				
+				// Select text when focusing on text inputs
+				if (nextElement === this.textInput.inputEl || nextElement === this.destInput.inputEl) {
+					(nextElement as HTMLInputElement).select();
+				}
 				return;
 			}
 
