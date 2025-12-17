@@ -148,7 +148,7 @@ export default class LinkEditorPlugin extends Plugin {
 						shouldBeMarkdown = true;
 						shouldSelectText = true;
 						if (original !== normalized) {
-							conversionNotice = `✓ URL converted: ${original} → ${normalized}`;
+							conversionNotice = `URL converted: ${original} → ${normalized}`;
 						}
 						// Find the URL boundaries to set start/end
 						const urlStart = line.indexOf(cursorUrl);
@@ -163,7 +163,7 @@ export default class LinkEditorPlugin extends Plugin {
 						shouldBeMarkdown = true;
 						shouldSelectText = true;
 						if (original !== normalized) {
-							conversionNotice = `✓ URL converted: ${original} → ${normalized}`;
+							conversionNotice = `URL converted: ${original} → ${normalized}`;
 						}
 					} else if (selection) {
 						linkText = selection;
@@ -173,7 +173,7 @@ export default class LinkEditorPlugin extends Plugin {
 							linkDest = normalized;
 							shouldBeMarkdown = true;
 							if (original !== normalized) {
-								conversionNotice = `✓ URL converted: ${original} → ${normalized}`;
+								conversionNotice = `URL converted: ${original} → ${normalized}`;
 							}
 						} else {
 							// Check if clipboard contains a valid link (wiki or markdown)
@@ -181,7 +181,7 @@ export default class LinkEditorPlugin extends Plugin {
 							if (parsedLink) {
 								linkDest = parsedLink.destination;
 								shouldBeMarkdown = !parsedLink.isWiki;
-								conversionNotice = `✓ Used destination from link in clipboard`;
+								conversionNotice = `Used destination from link in clipboard`;
 							} else {
 								linkDest = clipboardText;
 								shouldBeMarkdown = false;
@@ -195,7 +195,7 @@ export default class LinkEditorPlugin extends Plugin {
 						shouldSelectText = true;
 						shouldBeMarkdown = true;
 						if (original !== normalized) {
-							conversionNotice = `✓ URL converted: ${original} → ${normalized}`;
+							conversionNotice = `URL converted: ${original} → ${normalized}`;
 						}
 					} else {
 						// Check if clipboard contains a valid link (wiki or markdown)
@@ -204,7 +204,7 @@ export default class LinkEditorPlugin extends Plugin {
 							linkText = parsedLink.text;
 							linkDest = parsedLink.destination;
 							shouldBeMarkdown = !parsedLink.isWiki;
-							conversionNotice = `✓ Used text & destination from link in clipboard`;
+							conversionNotice = `Used text & destination from link in clipboard`;
 						} else {
 							linkText = "";
 							linkDest = clipboardText;
