@@ -422,7 +422,7 @@ export class LinkEditModal extends Modal {
 
 		if (this.isWiki && this.isUrl(dest)) {
 			warnings.push({
-				text: "⚠️ Warning: Valid URL detected but Wikilink format selected. Wikilinks cannot link to external URLs.",
+				text: "⚠️ Warning: Wikilinks cannot link to external URLs.",
 				cls: "link-warning-error",
 			});
 		}
@@ -438,7 +438,7 @@ export class LinkEditModal extends Modal {
 					});
 				} else {
 					warnings.push({
-						text: '⚠️ Invalid Wikilink destination. Contains forbidden characters (| ^ : %% [[ ]] * " ? \\\\ / in filename).',
+						text: '⚠️ Wikilink destination contains forbidden characters (| ^ : %% [[ ]] * " ? \\\\ / in filename).',
 						cls: "link-warning-error",
 					});
 				}
