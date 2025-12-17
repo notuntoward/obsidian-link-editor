@@ -1,57 +1,94 @@
-/* STRONG focus for Link Type slider + Apply button only */
+/* Remove borders and reduce spacing in Link Edit Modal */
+.modal-content .setting-item {
+  border-top: none !important;
+  padding: 0.5em 0;
+}
 
+.modal-content .setting-item:first-of-type {
+  padding-top: 0;
+}
+
+.modal-content .setting-item:last-of-type {
+  padding-bottom: 0;
+}
+
+/* Reduce spacing for setting item info (labels) */
+.modal-content .setting-item-info {
+  padding-right: 0;
+}
+
+/* Reduce spacing in setting item controls */
+.modal-content .setting-item-control {
+  padding-left: 0;
+}
+
+/* Tighten up the modal heading */
+.modal-content h4 {
+  margin-top: 0;
+  margin-bottom: 1em;
+}
+
+/* Match input text size to editor text */
+.modal-content input[type="text"] {
+  font-size: var(--font-text-size) !important;
+  font-family: var(--font-text) !important;
+}
+
+/* Reduce spacing in warnings container */
+.link-warnings-container {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+/* STRONG focus for Link Type slider + Apply button only */
 /* Unfocused: let the theme draw them normally */
 .modal-content .setting-item-control .toggle,
 .modal-content .setting-item-control .checkbox-container,
 .modal-content .setting-item-control .toggle-component,
 .modal-content .setting-item-control .mod-cta {
-	transition:
-		box-shadow 0.1s ease-out,
-		transform 0.1s ease-out,
-		background-color 0.1s ease-out;
+  transition:
+    box-shadow 0.1s ease-out,
+    transform 0.1s ease-out,
+    background-color 0.1s ease-out;
 }
 
 /* Focused: obvious change in fill, border, and size */
 .modal-content .setting-item-control .toggle:focus-visible,
 .modal-content .setting-item-control .checkbox-container:focus-visible,
 .modal-content .setting-item-control .toggle-component:focus-visible {
-	outline: none;
-	/* Slight "zoom" so your eye is drawn to it */
-	transform: scale(1.05);
-	/* Thicker accent border + halo */
-	box-shadow:
-		0 0 0 2px var(--interactive-accent),
-		0 0 6px 2px color-mix(in srgb, var(--interactive-accent) 60%, transparent);
-	border-color: var(--interactive-accent);
-	border-width: 2px;
-	border-style: solid;
-	/* Darker (in light mode) or lighter (in dark mode) fill against background */
-	background-color: color-mix(
-		in srgb,
-		var(--interactive-accent) 20%,
-		var(--background-primary) 80%
-	);
+  outline: none;
+  /* Slight "zoom" so your eye is drawn to it */
+  transform: scale(1.05);
+  /* Thicker accent border + halo */
+  box-shadow:
+    0 0 0 2px var(--interactive-accent),
+    0 0 6px 2px color-mix(in srgb, var(--interactive-accent) 60%, transparent);
+  border-color: var(--interactive-accent);
+  border-width: 2px;
+  border-style: solid;
+  /* Darker (in light mode) or lighter (in dark mode) fill against background */
+  background-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 20%,
+    var(--background-primary) 80%
+  );
 }
 
 /* Special handling for Apply button to ensure text visibility */
 .modal-content .setting-item-control .mod-cta:focus-visible {
-	outline: none;
-	/* Slight "zoom" so your eye is drawn to it */
-	transform: scale(1.05);
-	/* Thicker accent border + halo */
-	box-shadow:
-		0 0 0 2px var(--interactive-accent),
-		0 0 6px 2px color-mix(in srgb, var(--interactive-accent) 60%, transparent);
-	border-color: var(--interactive-accent);
-	border-width: 2px;
-	border-style: solid;
-	/* Keep the original button background but add subtle overlay */
-	background-color: var(--interactive-accent);
-	/* Ensure text remains visible with proper contrast */
-	color: var(--text-on-accent) !important;
-	/* Add subtle inner shadow for depth */
-	box-shadow:
-		0 0 0 2px var(--interactive-accent),
-		0 0 6px 2px color-mix(in srgb, var(--interactive-accent) 60%, transparent),
-		inset 0 1px 0 color-mix(in srgb, white 20%, transparent);
+  outline: none;
+  /* Slight "zoom" so your eye is drawn to it */
+  transform: scale(1.05);
+  /* Thicker accent border + halo */
+  box-shadow:
+    0 0 0 2px var(--interactive-accent),
+    0 0 6px 2px color-mix(in srgb, var(--interactive-accent) 60%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 20%, transparent);
+  border-color: var(--interactive-accent);
+  border-width: 2px;
+  border-style: solid;
+  /* Keep the original button background but add subtle overlay */
+  background-color: var(--interactive-accent);
+  /* Ensure text remains visible with proper contrast */
+  color: var(--text-on-accent) !important;
 }
