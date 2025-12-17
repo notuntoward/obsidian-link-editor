@@ -10,6 +10,7 @@ export class LinkEditModal extends Modal {
 	conversionNotice: string | null;
 	isWiki: boolean;
 	wasUrl: boolean;
+	isNewLink: boolean;
 
 	textInput!: TextComponent;
 	destInput!: TextComponent;
@@ -25,7 +26,8 @@ export class LinkEditModal extends Modal {
 		link: LinkInfo,
 		onSubmit: (result: LinkInfo) => void,
 		shouldSelectText?: boolean,
-		conversionNotice?: string | null
+		conversionNotice?: string | null,
+		isNewLink?: boolean
 	) {
 		super(app);
 		this.link = link;
@@ -34,6 +36,7 @@ export class LinkEditModal extends Modal {
 		this.conversionNotice = conversionNotice || null;
 		this.isWiki = false;
 		this.wasUrl = false;
+		this.isNewLink = isNewLink || false;
 	}
 
 	onOpen(): void {
@@ -290,8 +293,10 @@ export class LinkEditModal extends Modal {
 					this.toggleComponent.setValue(parsedLink.isWiki);
 				}
 				
-				// Update the embed toggle based on the parsed link
-				this.embedToggle.setValue(parsedLink.isEmbed);
+				// IMPORTANT: Never modify the embed state from clipboard
+				// - For existing links: preserve the original embed state
+				// - For new links: start with embed state as false (unembedded)
+				// The embed toggle is already set correctly in the constructor
 				
 				this.updateUIState();
 			}

@@ -33,9 +33,14 @@ export default class LinkEditorPlugin extends Plugin {
 				while ((match = mdRegex.exec(line)) !== null) {
 					start = match.index;
 					end = match.index + match[0].length;
-					if (cursor.ch >= start && cursor.ch <= end) {
-						// Check if this is an embedded link (starts with !)
-						const isEmbed = start > 0 && line.charAt(start - 1) === '!';
+					
+					// Check if this is an embedded link (starts with !)
+					const isEmbed = start > 0 && line.charAt(start - 1) === '!';
+					const actualStart = isEmbed ? start - 1 : start;
+					
+					// Check if cursor is within the link or immediately before it (for embeds)
+					if ((cursor.ch >= start && cursor.ch <= end) ||
+						(isEmbed && cursor.ch === actualStart)) {
 						if (isEmbed) {
 							start--; // Include the ! in the selection
 						}
@@ -83,9 +88,14 @@ export default class LinkEditorPlugin extends Plugin {
 					for (const wikiMatch of wikiLinkMatches) {
 						start = wikiMatch.index;
 						end = wikiMatch.index + wikiMatch.match.length;
-						if (cursor.ch >= start && cursor.ch <= end) {
-							// Check if this is an embedded link (starts with !)
-							const isEmbed = start > 0 && line.charAt(start - 1) === '!';
+						
+						// Check if this is an embedded link (starts with !)
+						const isEmbed = start > 0 && line.charAt(start - 1) === '!';
+						const actualStart = isEmbed ? start - 1 : start;
+						
+						// Check if cursor is within the link or immediately before it (for embeds)
+						if ((cursor.ch >= start && cursor.ch <= end) ||
+							(isEmbed && cursor.ch === actualStart)) {
 							if (isEmbed) {
 								start--; // Include the ! in the selection
 							}
@@ -101,11 +111,14 @@ export default class LinkEditorPlugin extends Plugin {
 					}
 				}
 
+				// Determine if we're editing an existing link (found in markdown or wiki sections above)
+				const isEditingExistingLink = link !== null;
+
 				// New link
 				let shouldSelectText = false;
 				let conversionNotice: string | null = null;
 
-				if (!link) {
+				if (!isEditingExistingLink) {
 					const selection = editor.getSelection();
 					let clipboardText = "";
 
@@ -240,10 +253,12 @@ export default class LinkEditorPlugin extends Plugin {
 						end = cursor.ch;
 					}
 				}
-
+				
+				// At this point, link is guaranteed to be non-null
+				// Either we found an existing link or created a new one
 				new LinkEditModal(
 					this.app,
-					link,
+					link!,
 					(result: LinkInfo) => {
 						let replacement: string;
 						const embedPrefix = result.isEmbed ? "!" : "";
@@ -274,7 +289,8 @@ export default class LinkEditorPlugin extends Plugin {
 						editor.setCursor({ line: cursor.line, ch: newCh });
 					},
 					shouldSelectText,
-					conversionNotice
+					conversionNotice,
+					!isEditingExistingLink  // isNewLink is true when we're not editing an existing link
 				).open();
 			},
 		});
