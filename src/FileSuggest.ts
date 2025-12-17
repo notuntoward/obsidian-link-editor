@@ -94,14 +94,23 @@ export class FileSuggest extends AbstractInputSuggest<SuggestionItem> {
 				file.basename.toLowerCase().includes(lowerQuery)
 		);
 		matches.sort((a, b) => b.stat.mtime - a.stat.mtime);
-		return matches.slice(0, 20).map((f) => ({
-			type: "file" as const,
-			file: f,
-			basename: f.basename,
-			path: f.path,
-			name: f.name,
-			extension: f.extension,
-		}));
+		const currentFile = this.app.workspace.getActiveFile();
+		const currentDir = currentFile ? currentFile.parent?.path : "";
+		
+		return matches.slice(0, 20).map((f) => {
+			const fileDir = f.parent?.path || "";
+			const showPath = fileDir !== currentDir && fileDir !== "";
+			
+			return {
+				type: "file" as const,
+				file: f,
+				basename: f.basename,
+				path: f.path,
+				name: f.name,
+				extension: f.extension,
+				displayPath: showPath ? fileDir + "/" : "",
+			};
+		});
 	}
 
 	getHeadingsInCurrentFile(): SuggestionItem[] {
@@ -274,8 +283,15 @@ export class FileSuggest extends AbstractInputSuggest<SuggestionItem> {
 			}
 		} else {
 			// File
-			content.createDiv({ text: item.basename || "", cls: "suggestion-title" });
-			content.createDiv({ text: item.path || "", cls: "suggestion-note" });
+			const displayName = item.basename || "";
+			const displayPath = item.displayPath || "";
+			
+			content.createDiv({ text: displayName, cls: "suggestion-title" });
+			
+			// Only show path if it's in a different folder than current note
+			if (displayPath && displayPath !== "/") {
+				content.createDiv({ text: displayPath, cls: "suggestion-note" });
+			}
 		}
 	}
 
@@ -311,7 +327,7 @@ export class FileSuggest extends AbstractInputSuggest<SuggestionItem> {
 				linkValue = `#^${item.blockId}`;
 			}
 		} else {
-			// File
+			// File - don't include path in the final link value
 			if (item.extension === "md") {
 				linkValue = item.basename || "";
 			} else {

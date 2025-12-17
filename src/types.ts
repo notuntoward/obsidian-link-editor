@@ -18,6 +18,7 @@ export interface SuggestionItem {
 	path?: string;
 	name?: string;
 	extension?: string;
+	displayPath?: string; // Path to display in suggestions (without filename)
 }
 
 export interface PluginSettings {
