@@ -214,11 +214,12 @@ export class FileSuggest extends AbstractInputSuggest<SuggestionItem> {
 	getHeadingsInFile(fileName: string, headingQuery = ""): SuggestionItem[] {
 		const files = this.app.vault.getFiles();
 		const lowerFileName = fileName.toLowerCase();
-		const file = files.find(
-			(f) =>
-				f.basename.toLowerCase() === lowerFileName ||
-				f.path.toLowerCase().includes(lowerFileName)
-		);
+                // First try exact basename match
+                let file = files.find((f) => f.basename.toLowerCase() === lowerFileName);
+                // If no exact match, try path contains (for files in subdirectories)
+                if (!file) {
+                    file = files.find((f) => f.path.toLowerCase().includes(lowerFileName));
+                }
 		if (!file) return [];
 
 		const cache = this.app.metadataCache.getFileCache(file);
@@ -240,11 +241,13 @@ export class FileSuggest extends AbstractInputSuggest<SuggestionItem> {
 	findFile(fileName: string): TFile | undefined {
 		const files = this.app.vault.getFiles();
 		const lowerFileName = fileName.toLowerCase();
-		return files.find(
-			(f) =>
-				f.basename.toLowerCase() === lowerFileName ||
-				f.path.toLowerCase().includes(lowerFileName)
-		);
+                // First try exact basename match
+                let file = files.find((f) => f.basename.toLowerCase() === lowerFileName);
+                // If no exact match, try path contains (for files in subdirectories)
+                if (!file) {
+                   file = files.find((f) => f.path.toLowerCase().includes(lowerFileName));
+                }
+               return file;
 	}
 
 	async getAllBlocksInFile(file: TFile, blockQuery = ""): Promise<SuggestionItem[]> {
