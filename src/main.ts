@@ -86,14 +86,43 @@ export default class LinkEditorPlugin extends Plugin {
 						return trimmed;
 					};
 
+					// Check for URL at cursor position
+					const urlAtCursor = (text: string, pos: number): string | null => {
+						const urlRegex = /https?:\/\/[^\s]+|www\.[^\s]+/gi;
+						let match;
+						while ((match = urlRegex.exec(text)) !== null) {
+							if (pos >= match.index && pos <= match.index + match[0].length) {
+								return match[0];
+							}
+						}
+						return null;
+					};
+
 					const isSelectionUrl = isUrl(selection);
 					const isClipboardUrl = isUrl(clipboardText);
+					const cursorUrl = urlAtCursor(line, cursor.ch);
 
 					let linkText = "";
 					let linkDest = "";
 					let shouldBeMarkdown = false;
 
-					if (isSelectionUrl) {
+					// If cursor is on a URL but not within a link, use that URL
+					if (cursorUrl && !isSelectionUrl) {
+						const original = cursorUrl.trim();
+						const normalized = normalizeUrl(original);
+						linkText = original;
+						linkDest = normalized;
+						shouldBeMarkdown = true;
+						shouldSelectText = true;
+						if (original !== normalized) {
+							conversionNotice = `✓ URL converted: ${original} → ${normalized}`;
+						}
+						// Find the URL boundaries to set start/end
+						const urlStart = line.indexOf(cursorUrl);
+						const urlEnd = urlStart + cursorUrl.length;
+						start = urlStart;
+						end = urlEnd;
+					} else if (isSelectionUrl) {
 						const original = selection.trim();
 						const normalized = normalizeUrl(original);
 						linkText = original;
@@ -144,7 +173,7 @@ export default class LinkEditorPlugin extends Plugin {
 						const selEnd = editor.getCursor("to");
 						start = selStart.ch;
 						end = selEnd.ch;
-					} else {
+					} else if (!cursorUrl) {
 						start = cursor.ch;
 						end = cursor.ch;
 					}
