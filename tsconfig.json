@@ -4,22 +4,16 @@
     "inlineSourceMap": true,
     "inlineSources": true,
     "module": "ESNext",
-    "target": "ES2022",
+    "target": "ES2020",
     "allowJs": true,
     "noImplicitAny": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "importHelpers": true,
     "isolatedModules": true,
     "strictNullChecks": true,
-    "lib": [
-      "DOM",
-      "ES2022"
-    ],
     "skipLibCheck": true,
-    "esModuleInterop": true,
-    "resolveJsonModule": true
+    "lib": ["DOM", "ES2020"],
+    "types": ["node", "vitest/globals"]
   },
-  "include": [
-    "src/**/*.ts"
-  ]
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
 }

@@ -1,6 +1,8 @@
+import { TFile, Pos } from "obsidian";
+
 /**
  * Check if a destination string is valid for a WikiLink format
- *
+ * 
  * WikiLink validation rules:
  * 1. Cannot be a URL (starts with http:// or https://)
  * 2. Cannot contain angle brackets or parentheses
@@ -15,10 +17,10 @@ export function isValidWikiLink(dest: string): boolean {
 	if (!dest) return false;
 
 	// WikiLinks don't support URLs
-	if (/^https?:\/\//i.test(dest)) return false;
+	if (/^https?:\/\//.test(dest)) return false;
 
 	// WikiLinks don't support angle brackets or parens
-	if (dest.includes("<") || dest.includes(">") || dest.includes("(") || dest.includes(")"))
+	if (dest.includes("<") || dest.includes(">") || dest.includes("(") || dest.includes(")")) 
 		return false;
 
 	// Check for invalid characters in the filename portion
@@ -35,7 +37,7 @@ export function isValidWikiLink(dest: string): boolean {
 	if (filename.includes("[[") || filename.includes("]]")) return false;
 
 	// Also check OS-level forbidden characters
-	if (filename.includes("*") || filename.includes('\"') || filename.includes("?")) return false;
+	if (filename.includes("*") || filename.includes('"') || filename.includes("?")) return false;
 	if (filename.includes("\\") || filename.includes("/")) return false;
 
 	// If there's a heading/block reference part (after #), validate it
@@ -47,7 +49,7 @@ export function isValidWikiLink(dest: string): boolean {
 			const blockId = reference.slice(1);
 			// Block IDs should only contain alphanumeric and hyphens
 			if (!/^[a-zA-Z0-9-]+$/.test(blockId)) return false;
-		}
+		} 
 		// Heading reference - headings can contain most characters except [[ ]] | %%
 		else {
 			if (reference.includes("[[") || reference.includes("]]")) return false;
@@ -61,7 +63,7 @@ export function isValidWikiLink(dest: string): boolean {
 
 /**
  * Check if a destination string is valid for a Markdown link format
- *
+ * 
  * Markdown link validation rules:
  * 1. URLs are always valid, including:
  *    - Full URLs (http:// or https://)
@@ -149,28 +151,28 @@ export function markdownToWiki(dest: string): string | null {
 }
 
 /**
-	* Parse a wiki link from text and extract text and destination
-	* WikiLink format: [[filename|display text]] or [[filename]]
-	*/
+ * Parse a wiki link from text and extract text and destination
+ * WikiLink format: [[filename|display text]] or [[filename]]
+ */
 export function parseWikiLink(text: string): { text: string; destination: string; isEmbed: boolean } | null {
 	if (!text) return null;
-	
+
 	// Check if it starts with ! for embed
 	const isEmbed = text.startsWith('![[');
 	const linkStart = isEmbed ? 3 : 2;
-	
+
 	// Must start with [[ or ![[
 	if (!text.startsWith('[[') && !text.startsWith('![[')) return null;
-	
+
 	// Must end with ]]
 	if (!text.endsWith(']]')) return null;
-	
+
 	// Extract content between brackets
 	const innerContent = text.slice(linkStart, -2); // Remove ![[/[[ and ]]
-	
+
 	// Find the last pipe to separate destination from display text
 	const lastPipeIndex = innerContent.lastIndexOf('|');
-	
+
 	let destination, linkText;
 	if (lastPipeIndex === -1) {
 		// No display text, just destination
@@ -181,53 +183,483 @@ export function parseWikiLink(text: string): { text: string; destination: string
 		destination = innerContent.substring(0, lastPipeIndex).trim();
 		linkText = innerContent.substring(lastPipeIndex + 1).trim();
 	}
-	
+
 	return { text: linkText, destination, isEmbed };
 }
 
 /**
-	* Parse a markdown link from text and extract text and destination
-	* Markdown link format: [display text](destination)
-	*/
+ * Parse a markdown link from text and extract text and destination
+ * Markdown link format: [display text](destination)
+ */
 export function parseMarkdownLink(text: string): { text: string; destination: string; isEmbed: boolean } | null {
 	if (!text) return null;
-	
+
 	// Check if it starts with ! for embed
 	const isEmbed = text.startsWith('![');
-	
+
 	// Match markdown link pattern: [display text](destination) (or with ! prefix)
 	const pattern = isEmbed ? /^!\[([^\]]*)\]\(([^)]+)\)$/ : /^\[([^\]]*)\]\(([^)]+)\)$/;
-	
+
 	// Match markdown link pattern: [display text](destination)
 	const markdownLinkMatch = text.match(pattern);
+
 	if (!markdownLinkMatch) return null;
-	
+
 	const linkText = markdownLinkMatch[1].trim();
 	const destination = markdownLinkMatch[2].trim();
-	
+
 	return { text: linkText, destination, isEmbed };
 }
 
 /**
-	* Parse clipboard content to extract link information
-	* Returns null if clipboard doesn't contain a valid link
-	*/
+ * Parse clipboard content to extract link information
+ * Returns null if clipboard doesn't contain a valid link
+ */
 export function parseClipboardLink(clipboardText: string): { text: string; destination: string; isWiki: boolean; isEmbed: boolean } | null {
 	if (!clipboardText) return null;
-	
+
 	const trimmed = clipboardText.trim();
-	
+
 	// Try to parse as wiki link first
 	const wikiLink = parseWikiLink(trimmed);
 	if (wikiLink) {
 		return { ...wikiLink, isWiki: true };
 	}
-	
+
 	// Try to parse as markdown link
 	const markdownLink = parseMarkdownLink(trimmed);
 	if (markdownLink) {
 		return { ...markdownLink, isWiki: false };
 	}
-	
+
 	return null;
+}
+
+// ============================================================================
+// NEW: Refactored functions for improved testability
+// ============================================================================
+
+/**
+ * Check if a string is a URL
+ */
+export function isUrl(str: string): boolean {
+	if (!str) return false;
+	const trimmed = str.trim();
+	return /^https?:\/\/\S+$|^www\.\S+$/i.test(trimmed);
+}
+
+/**
+ * Normalize a URL (add https:// prefix if needed)
+ */
+export function normalizeUrl(str: string): string {
+	if (!str) return str;
+	const trimmed = str.trim();
+	if (/^https?:\/\//i.test(trimmed)) return trimmed;
+	if (/^www\./i.test(trimmed)) return "https://" + trimmed;
+	return trimmed;
+}
+
+/**
+ * Check if a string looks like a URL but may have typos
+ */
+export function isAlmostUrl(str: string): boolean {
+	if (!str) return false;
+	const trimmed = str.trim();
+        // Check for common typos: htp, htps, http, https, www
+        return /^(htp|htps|http|https|www)[:.a-zA-Z0-9-]/i.test(trimmed);
+}
+
+/**
+ * Find URL at a specific cursor position in text
+ */
+export function urlAtCursor(text: string, pos: number): string | null {
+	const urlRegex = /https?:\/\/[^\s]+|www\.[^\s]+/gi;
+	let match;
+	while ((match = urlRegex.exec(text)) !== null) {
+		if (pos >= match.index && pos <= match.index + match[0].length) {
+			return match[0];
+		}
+	}
+	return null;
+}
+
+/**
+ * Result of link detection at cursor
+ */
+export interface LinkAtCursor {
+	link: {
+		text: string;
+		destination: string;
+		isWiki: boolean;
+		isEmbed: boolean;
+	};
+	start: number;
+	end: number;
+	enteredFromLeft: boolean;
+}
+
+/**
+ * Detect if there's a Markdown link at the cursor position
+ */
+export function detectMarkdownLinkAtCursor(line: string, cursorCh: number): LinkAtCursor | null {
+	const mdRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+	let match: RegExpExecArray | null;
+
+	while ((match = mdRegex.exec(line)) !== null) {
+		const start = match.index;
+		const end = match.index + match[0].length;
+
+		// Check if this is an embedded link (starts with !)
+		const isEmbed = start > 0 && line.charAt(start - 1) === '!';
+		const actualStart = isEmbed ? start - 1 : start;
+
+		// Check if cursor is within the link or immediately before it (for embeds)
+		if ((cursorCh >= start && cursorCh <= end) || 
+		    (isEmbed && cursorCh === actualStart)) {
+
+			return {
+				link: {
+					text: match[1],
+					destination: match[2],
+					isWiki: false,
+					isEmbed: isEmbed
+				},
+				start: isEmbed ? start - 1 : start,
+				end: end,
+				enteredFromLeft: cursorCh <= start + 1
+			};
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Detect if there's a WikiLink at the cursor position
+ */
+export function detectWikiLinkAtCursor(line: string, cursorCh: number): LinkAtCursor | null {
+	const wikiLinkMatches = [];
+	let startIndex = 0;
+
+	// Find all wikilinks in the line
+	while (true) {
+		const openIndex = line.indexOf('[[', startIndex);
+		if (openIndex === -1) break;
+
+		const closeIndex = line.indexOf(']]', openIndex);
+		if (closeIndex === -1) break;
+
+		const fullMatch = line.substring(openIndex, closeIndex + 2);
+		const innerContent = line.substring(openIndex + 2, closeIndex);
+		const lastPipeIndex = innerContent.lastIndexOf('|');
+
+		let destination, text;
+		if (lastPipeIndex === -1) {
+			destination = innerContent.trim();
+			text = destination;
+		} else {
+			destination = innerContent.substring(0, lastPipeIndex).trim();
+			text = innerContent.substring(lastPipeIndex + 1).trim();
+		}
+
+		wikiLinkMatches.push({
+			index: openIndex,
+			match: fullMatch,
+			groups: [destination, text]
+		});
+
+		startIndex = closeIndex + 2;
+	}
+
+	// Check if cursor is within any of the found wikilinks
+	for (const wikiMatch of wikiLinkMatches) {
+		const start = wikiMatch.index;
+		const end = wikiMatch.index + wikiMatch.match.length;
+
+		// Check if this is an embedded link (starts with !)
+		const isEmbed = start > 0 && line.charAt(start - 1) === '!';
+		const actualStart = isEmbed ? start - 1 : start;
+
+		// Check if cursor is within the link or immediately before it (for embeds)
+		if ((cursorCh >= start && cursorCh <= end) || 
+		    (isEmbed && cursorCh === actualStart)) {
+
+			return {
+				link: {
+					destination: wikiMatch.groups[0],
+					text: wikiMatch.groups[1],
+					isWiki: true,
+					isEmbed: isEmbed,
+				},
+				start: isEmbed ? start - 1 : start,
+				end: end,
+				enteredFromLeft: cursorCh <= start + 2
+			};
+		}
+	}
+
+	return null;
+}
+
+/**
+ * Detect any link (Markdown or WikiLink) at cursor position
+ */
+export function detectLinkAtCursor(line: string, cursorCh: number): LinkAtCursor | null {
+	// Try Markdown first
+	const mdLink = detectMarkdownLinkAtCursor(line, cursorCh);
+	if (mdLink) return mdLink;
+
+	// Try WikiLink
+	return detectWikiLinkAtCursor(line, cursorCh);
+}
+
+/**
+ * Context for determining link from user input
+ */
+export interface LinkContext {
+	selection: string;
+	clipboardText: string;
+	cursorUrl: string | null;
+	line: string;
+	cursorCh: number;
+}
+
+/**
+ * Result of determining link from context
+ */
+export interface LinkFromContext {
+	text: string;
+	destination: string;
+	isWiki: boolean;
+	shouldSelectText: boolean;
+	conversionNotice: string | null;
+	start: number;
+	end: number;
+}
+
+/**
+ * Determine link information from various context sources
+ * (selection, clipboard, URL at cursor)
+ */
+export function determineLinkFromContext(context: LinkContext): LinkFromContext {
+	const { selection, clipboardText, cursorUrl, line, cursorCh } = context;
+
+	const isSelectionUrl = isUrl(selection);
+	const isClipboardUrl = isUrl(clipboardText);
+
+	let linkText = "";
+	let linkDest = "";
+	let shouldBeMarkdown = false;
+	let shouldSelectText = false;
+	let conversionNotice: string | null = null;
+	let start = cursorCh;
+	let end = cursorCh;
+
+	// If cursor is on a URL but not within a link, use that URL
+	if (cursorUrl && !isSelectionUrl) {
+		const original = cursorUrl.trim();
+		const normalized = normalizeUrl(original);
+
+		// If clipboard has non-link text, use it as the link text
+		const parsedLink = parseClipboardLink(clipboardText);
+		if (clipboardText && !parsedLink && !isUrl(clipboardText)) {
+			linkText = clipboardText;
+		} else {
+			linkText = original;
+		}
+
+		linkDest = normalized;
+		shouldBeMarkdown = true;
+		shouldSelectText = true;
+
+		if (original !== normalized) {
+			conversionNotice = `URL converted: ${original} → ${normalized}`;
+		}
+
+		// Find the URL boundaries to set start/end
+		const urlStart = line.indexOf(cursorUrl);
+		const urlEnd = urlStart + cursorUrl.length;
+		start = urlStart;
+		end = urlEnd;
+	} 
+	// Selection is a URL
+	else if (isSelectionUrl) {
+		const original = selection.trim();
+		const normalized = normalizeUrl(original);
+		linkText = original;
+		linkDest = normalized;
+		shouldBeMarkdown = true;
+		shouldSelectText = true;
+
+		if (original !== normalized) {
+			conversionNotice = `URL converted: ${original} → ${normalized}`;
+		}
+	} 
+	// Have selection (but not a URL)
+	else if (selection) {
+		linkText = selection;
+
+		if (isClipboardUrl) {
+			const original = clipboardText;
+			const normalized = normalizeUrl(original);
+			linkDest = normalized;
+			shouldBeMarkdown = true;
+
+			if (original !== normalized) {
+				conversionNotice = `URL converted: ${original} → ${normalized}`;
+			}
+		} else {
+			// Check if clipboard contains a valid link (wiki or markdown)
+			const parsedLink = parseClipboardLink(clipboardText);
+			if (parsedLink) {
+				linkDest = parsedLink.destination;
+				shouldBeMarkdown = !parsedLink.isWiki;
+				conversionNotice = `Used destination from link in clipboard`;
+			} else {
+				linkDest = clipboardText;
+				shouldBeMarkdown = false;
+			}
+		}
+	} 
+	// No selection, clipboard has URL
+	else if (isClipboardUrl) {
+		const original = clipboardText;
+		const normalized = normalizeUrl(original);
+		linkText = normalized;
+		linkDest = normalized;
+		shouldSelectText = true;
+		shouldBeMarkdown = true;
+
+		if (original !== normalized) {
+			conversionNotice = `URL converted: ${original} → ${normalized}`;
+		}
+	} 
+	// No selection, clipboard might have link or text
+	else {
+		// Check if clipboard contains a valid link (wiki or markdown)
+		const parsedLink = parseClipboardLink(clipboardText);
+		if (parsedLink) {
+			linkText = parsedLink.text;
+			linkDest = parsedLink.destination;
+			shouldBeMarkdown = !parsedLink.isWiki;
+			conversionNotice = `Used text & destination from link in clipboard`;
+		} else {
+			// If clipboard doesn't contain a valid link, use it as link text only
+			linkText = clipboardText;
+			linkDest = "";
+			shouldBeMarkdown = false;
+		}
+	}
+
+	return {
+		text: linkText,
+		destination: linkDest,
+		isWiki: !shouldBeMarkdown,
+		shouldSelectText,
+		conversionNotice,
+		start,
+		end
+	};
+}
+
+/**
+ * Validation warning
+ */
+export interface ValidationWarning {
+	text: string;
+	severity: 'error' | 'caution';
+}
+
+/**
+ * Result of link validation
+ */
+export interface ValidationResult {
+	isValid: boolean;
+	warnings: ValidationWarning[];
+	shouldHighlightDest: boolean;
+	shouldHighlightText: boolean;
+}
+
+/**
+ * Validate link destination based on link type
+ */
+export function validateLinkDestination(
+	dest: string,
+	linkText: string,
+	isWiki: boolean
+): ValidationResult {
+	const warnings: ValidationWarning[] = [];
+	let shouldHighlightDest = false;
+	let shouldHighlightText = false;
+
+	const destLength = dest ? dest.length : 0;
+
+	// WikiLinks cannot link to URLs
+	if (isWiki && isUrl(dest)) {
+		warnings.push({
+			text: "Warning: Wikilinks cannot link to external URLs.",
+			severity: 'error'
+		});
+		shouldHighlightDest = true;
+	}
+
+	// Check destination validity for current link type
+	if (dest && !isUrl(dest)) {
+		if (isWiki && !isValidWikiLink(dest)) {
+			const converted = wikiToMarkdown(dest);
+			if (converted !== dest) {
+				warnings.push({
+					text: "Invalid WikiLink destination. Can toggle to Markdown below.",
+					severity: 'caution'
+				});
+			} else {
+				warnings.push({
+					text: "Wikilink destination contains forbidden characters (|*\":<>?[] in filename).",
+					severity: 'error'
+				});
+			}
+			shouldHighlightDest = true;
+		} else if (!isWiki && !isValidMarkdownLink(dest)) {
+			const converted = markdownToWiki(dest);
+			if (converted !== null) {
+				warnings.push({
+					text: "Invalid Markdown link destination. Can toggle to Wikilink below.",
+					severity: 'caution'
+				});
+			} else {
+				warnings.push({
+					text: "Invalid Markdown destination. Encode spaces and wrap them in <...> or toggle to WikiLink",
+					severity: 'error'
+				});
+			}
+			shouldHighlightDest = true;
+		}
+	}
+
+	// Check for almost-URL (typos)
+	if (!isUrl(dest) && isAlmostUrl(dest)) {
+		warnings.push({
+			text: `Warning: Destination looks like a URL but may have typos (check protocol).`,
+			severity: 'caution'
+		});
+		shouldHighlightDest = true;
+	}
+
+	// Warn about very long destinations
+	if (destLength > 500) {
+		warnings.push({
+			text: `Warning: Destination is very long (${destLength} chars). Consider shortening for reliability.`,
+			severity: 'caution'
+		});
+		shouldHighlightDest = true;
+	}
+
+	const isValid = warnings.filter(w => w.severity === 'error').length === 0;
+
+	return {
+		isValid,
+		warnings,
+		shouldHighlightDest,
+		shouldHighlightText
+	};
 }

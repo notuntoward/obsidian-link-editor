@@ -1,5 +1,6 @@
 import { App, TFile, AbstractInputSuggest } from "obsidian";
 import { SuggestionItem } from "./types";
+import { isUrl } from "./utils";
 import type { LinkEditModal } from "./LinkEditModal";
 
 export class FileSuggest extends AbstractInputSuggest<SuggestionItem> {
@@ -13,7 +14,7 @@ export class FileSuggest extends AbstractInputSuggest<SuggestionItem> {
 	}
 
 	async getSuggestions(query: string): Promise<SuggestionItem[]> {
-		if (this.modal.isUrl(query)) return [];
+		if (isUrl(query)) return [];
 
 		const trimmedQuery = query.trim();
 

@@ -2,7 +2,12 @@ import { Plugin, Editor, MarkdownView } from "obsidian";
 import { LinkEditModal } from "./LinkEditModal";
 import { LinkEditorSettingTab } from "./SettingTab";
 import { PluginSettings, LinkInfo } from "./types";
-import { parseClipboardLink } from "./utils";
+import { 
+	parseClipboardLink,
+	detectLinkAtCursor,
+	determineLinkFromContext,
+	urlAtCursor
+} from "./utils";
 
 const DEFAULT_SETTINGS: PluginSettings = {
 	alwaysMoveToEnd: false,
@@ -21,104 +26,22 @@ export default class LinkEditorPlugin extends Plugin {
 				const cursor = editor.getCursor();
 				const line = editor.getLine(cursor.line);
 
-				const mdRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+				// Try to detect existing link at cursor
+				const existingLink = detectLinkAtCursor(line, cursor.ch);
 
-				let match: RegExpExecArray | null;
 				let link: LinkInfo | null = null;
-				let start = 0;
-				let end = 0;
+				let start = cursor.ch;
+				let end = cursor.ch;
 				let enteredFromLeft = true;
 
-				// Markdown
-				while ((match = mdRegex.exec(line)) !== null) {
-					start = match.index;
-					end = match.index + match[0].length;
-					
-					// Check if this is an embedded link (starts with !)
-					const isEmbed = start > 0 && line.charAt(start - 1) === '!';
-					const actualStart = isEmbed ? start - 1 : start;
-					
-					// Check if cursor is within the link or immediately before it (for embeds)
-					if ((cursor.ch >= start && cursor.ch <= end) ||
-						(isEmbed && cursor.ch === actualStart)) {
-						if (isEmbed) {
-							start--; // Include the ! in the selection
-						}
-						link = { text: match[1], destination: match[2], isWiki: false, isEmbed: isEmbed };
-						enteredFromLeft = cursor.ch <= start + 1;
-						break;
-					}
-				}
-
-				// Wiki
-				if (!link) {
-					// Find all wikilinks in the line
-					const wikiLinkMatches = [];
-					let startIndex = 0;
-					while (true) {
-						const openIndex = line.indexOf('[[', startIndex);
-						if (openIndex === -1) break;
-						
-						const closeIndex = line.indexOf(']]', openIndex);
-						if (closeIndex === -1) break;
-						
-						const fullMatch = line.substring(openIndex, closeIndex + 2);
-						const innerContent = line.substring(openIndex + 2, closeIndex);
-						const lastPipeIndex = innerContent.lastIndexOf('|');
-						
-						let destination, text;
-						if (lastPipeIndex === -1) {
-							destination = innerContent.trim();
-							text = destination;
-						} else {
-							destination = innerContent.substring(0, lastPipeIndex).trim();
-							text = innerContent.substring(lastPipeIndex + 1).trim();
-						}
-						
-						wikiLinkMatches.push({
-							index: openIndex,
-							match: fullMatch,
-							groups: [destination, text]
-						});
-						
-						startIndex = closeIndex + 2;
-					}
-					
-					// Check if cursor is within any of the found wikilinks
-					for (const wikiMatch of wikiLinkMatches) {
-						start = wikiMatch.index;
-						end = wikiMatch.index + wikiMatch.match.length;
-						
-						// Check if this is an embedded link (starts with !)
-						const isEmbed = start > 0 && line.charAt(start - 1) === '!';
-						const actualStart = isEmbed ? start - 1 : start;
-						
-						// Check if cursor is within the link or immediately before it (for embeds)
-						if ((cursor.ch >= start && cursor.ch <= end) ||
-							(isEmbed && cursor.ch === actualStart)) {
-							if (isEmbed) {
-								start--; // Include the ! in the selection
-							}
-							link = {
-								destination: wikiMatch.groups[0],
-								text: wikiMatch.groups[1],
-								isWiki: true,
-								isEmbed: isEmbed,
-							};
-							enteredFromLeft = cursor.ch <= start + 2;
-							break;
-						}
-					}
-				}
-
-				// Determine if we're editing an existing link (found in markdown or wiki sections above)
-				const isEditingExistingLink = link !== null;
-
-				// New link
-				let shouldSelectText = false;
-				let conversionNotice: string | null = null;
-
-				if (!isEditingExistingLink) {
+				if (existingLink) {
+					// Found existing link
+					link = existingLink.link;
+					start = existingLink.start;
+					end = existingLink.end;
+					enteredFromLeft = existingLink.enteredFromLeft;
+				} else {
+					// Creating new link
 					const selection = editor.getSelection();
 					let clipboardText = "";
 
@@ -129,184 +52,113 @@ export default class LinkEditorPlugin extends Plugin {
 						// Clipboard access may fail
 					}
 
-					const isUrl = (str: string): boolean => {
-						if (!str) return false;
-						const trimmed = str.trim();
-						return /^https?:\/\/\S+$|^www\.\S+$/i.test(trimmed);
-					};
-
-					const normalizeUrl = (str: string): string => {
-						if (!str) return str;
-						const trimmed = str.trim();
-						if (/^https?:\/\//i.test(trimmed)) return trimmed;
-						if (/^www\./i.test(trimmed)) return "https://" + trimmed;
-						return trimmed;
-					};
-
-					// Check for URL at cursor position
-					const urlAtCursor = (text: string, pos: number): string | null => {
-						const urlRegex = /https?:\/\/[^\s]+|www\.[^\s]+/gi;
-						let match;
-						while ((match = urlRegex.exec(text)) !== null) {
-							if (pos >= match.index && pos <= match.index + match[0].length) {
-								return match[0];
-							}
-						}
-						return null;
-					};
-
-					const isSelectionUrl = isUrl(selection);
-					const isClipboardUrl = isUrl(clipboardText);
 					const cursorUrl = urlAtCursor(line, cursor.ch);
 
-					let linkText = "";
-					let linkDest = "";
-					let shouldBeMarkdown = false;
-
-					// If cursor is on a URL but not within a link, use that URL
-					if (cursorUrl && !isSelectionUrl) {
-						const original = cursorUrl.trim();
-						const normalized = normalizeUrl(original);
-						
-						// If clipboard has non-link text, use it as the link text
-						const parsedLink = parseClipboardLink(clipboardText);
-						if (clipboardText && !parsedLink && !isUrl(clipboardText)) {
-							linkText = clipboardText;
-						} else {
-							linkText = original;
-						}
-						
-						linkDest = normalized;
-						shouldBeMarkdown = true;
-						shouldSelectText = true;
-						if (original !== normalized) {
-							conversionNotice = `URL converted: ${original} → ${normalized}`;
-						}
-						// Find the URL boundaries to set start/end
-						const urlStart = line.indexOf(cursorUrl);
-						const urlEnd = urlStart + cursorUrl.length;
-						start = urlStart;
-						end = urlEnd;
-					} else if (isSelectionUrl) {
-						const original = selection.trim();
-						const normalized = normalizeUrl(original);
-						linkText = original;
-						linkDest = normalized;
-						shouldBeMarkdown = true;
-						shouldSelectText = true;
-						if (original !== normalized) {
-							conversionNotice = `URL converted: ${original} → ${normalized}`;
-						}
-					} else if (selection) {
-						linkText = selection;
-						if (isClipboardUrl) {
-							const original = clipboardText;
-							const normalized = normalizeUrl(original);
-							linkDest = normalized;
-							shouldBeMarkdown = true;
-							if (original !== normalized) {
-								conversionNotice = `URL converted: ${original} → ${normalized}`;
-							}
-						} else {
-							// Check if clipboard contains a valid link (wiki or markdown)
-							const parsedLink = parseClipboardLink(clipboardText);
-							if (parsedLink) {
-								linkDest = parsedLink.destination;
-								shouldBeMarkdown = !parsedLink.isWiki;
-								conversionNotice = `Used destination from link in clipboard`;
-							} else {
-								linkDest = clipboardText;
-								shouldBeMarkdown = false;
-							}
-						}
-					} else if (isClipboardUrl) {
-						const original = clipboardText;
-						const normalized = normalizeUrl(original);
-						linkText = normalized;
-						linkDest = normalized;
-						shouldSelectText = true;
-						shouldBeMarkdown = true;
-						if (original !== normalized) {
-							conversionNotice = `URL converted: ${original} → ${normalized}`;
-						}
-					} else {
-						// Check if clipboard contains a valid link (wiki or markdown)
-						const parsedLink = parseClipboardLink(clipboardText);
-						if (parsedLink) {
-							linkText = parsedLink.text;
-							linkDest = parsedLink.destination;
-							shouldBeMarkdown = !parsedLink.isWiki;
-							conversionNotice = `Used text & destination from link in clipboard`;
-						} else {
-							// If clipboard doesn't contain a valid link, use it as link text only
-							// This allows plain text like "Murdersville" to be used as the link text
-							linkText = clipboardText;
-							linkDest = "";
-							shouldBeMarkdown = false;
-							// Don't show any message when using plain text as link text
-						}
-					}
+					// Determine link from context (selection, clipboard, URL at cursor)
+					const linkContext = determineLinkFromContext({
+						selection,
+						clipboardText,
+						cursorUrl,
+						line,
+						cursorCh: cursor.ch
+					});
 
 					link = {
-						text: linkText,
-						destination: linkDest,
-						isWiki: !shouldBeMarkdown,
+						text: linkContext.text,
+						destination: linkContext.destination,
+						isWiki: linkContext.isWiki,
 						isEmbed: false,
 					};
 
+					// Handle selection range or URL range
 					if (editor.somethingSelected()) {
 						const selStart = editor.getCursor("from");
 						const selEnd = editor.getCursor("to");
 						start = selStart.ch;
 						end = selEnd.ch;
-					} else if (!cursorUrl) {
+					} else if (cursorUrl) {
+						start = linkContext.start;
+						end = linkContext.end;
+					} else {
 						start = cursor.ch;
 						end = cursor.ch;
 					}
+
+					// Open modal with link information
+					const isEditingExistingLink = false;
+					const shouldSelectText = linkContext.shouldSelectText;
+					const conversionNotice = linkContext.conversionNotice;
+
+					new LinkEditModal(
+						this.app,
+						link,
+						(result: LinkInfo) => {
+							this.applyLinkEdit(editor, cursor.line, start, end, result, enteredFromLeft);
+						},
+						shouldSelectText,
+						conversionNotice,
+						!isEditingExistingLink
+					).open();
+
+					return;
 				}
-				
+
 				// At this point, link is guaranteed to be non-null
-				// Either we found an existing link or created a new one
+				// Open modal for editing
 				new LinkEditModal(
 					this.app,
 					link!,
 					(result: LinkInfo) => {
-						let replacement: string;
-						const embedPrefix = result.isEmbed ? "!" : "";
-						
-						if (result.isWiki) {
-							if (result.text === result.destination) {
-								replacement = `${embedPrefix}[[${result.destination}]]`;
-							} else {
-								replacement = `${embedPrefix}[[${result.destination}|${result.text}]]`;
-							}
-						} else {
-							replacement = `${embedPrefix}[${result.text}](${result.destination})`;
-						}
-
-						editor.replaceRange(
-							replacement,
-							{ line: cursor.line, ch: start },
-							{ line: cursor.line, ch: end }
-						);
-
-						let newCh: number;
-						if (this.settings.alwaysMoveToEnd) {
-							newCh = start + replacement.length;
-						} else {
-							newCh = enteredFromLeft ? start + replacement.length : start;
-						}
-
-						editor.setCursor({ line: cursor.line, ch: newCh });
+						this.applyLinkEdit(editor, cursor.line, start, end, result, enteredFromLeft);
 					},
-					shouldSelectText,
-					conversionNotice,
-					!isEditingExistingLink  // isNewLink is true when we're not editing an existing link
+					false, // shouldSelectText
+					null,  // conversionNotice
+					false  // isNewLink
 				).open();
 			},
 		});
 
 		this.addSettingTab(new LinkEditorSettingTab(this.app, this));
+	}
+
+	/**
+	 * Apply link edit to editor
+	 */
+	private applyLinkEdit(
+		editor: Editor,
+		line: number,
+		start: number,
+		end: number,
+		result: LinkInfo,
+		enteredFromLeft: boolean
+	) {
+		let replacement: string;
+		const embedPrefix = result.isEmbed ? "!" : "";
+
+		if (result.isWiki) {
+			if (result.text === result.destination) {
+				replacement = `${embedPrefix}[[${result.destination}]]`;
+			} else {
+				replacement = `${embedPrefix}[[${result.destination}|${result.text}]]`;
+			}
+		} else {
+			replacement = `${embedPrefix}[${result.text}](${result.destination})`;
+		}
+
+		editor.replaceRange(
+			replacement,
+			{ line: line, ch: start },
+			{ line: line, ch: end }
+		);
+
+		let newCh: number;
+		if (this.settings.alwaysMoveToEnd) {
+			newCh = start + replacement.length;
+		} else {
+			newCh = enteredFromLeft ? start + replacement.length : start;
+		}
+
+		editor.setCursor({ line: line, ch: newCh });
 	}
 
 	onunload() {}
