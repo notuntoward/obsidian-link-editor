@@ -154,14 +154,21 @@ export function markdownToWiki(dest: string): string | null {
 	*/
 export function parseWikiLink(text: string): { text: string; destination: string; isEmbed: boolean } | null {
 	if (!text) return null;
+	
 	// Check if it starts with ! for embed
 	const isEmbed = text.startsWith('![[');
 	const linkStart = isEmbed ? 3 : 2;
 	
-	// Match wiki link pattern: [[filename|display text]] or [[filename]]
-	// Using a more specific pattern to correctly handle the pipe character
-	// We need to find the last pipe before the closing brackets to separate destination from display text
+	// Must start with [[ or ![[
+	if (!text.startsWith('[[') && !text.startsWith('![[')) return null;
+	
+	// Must end with ]]
+	if (!text.endsWith(']]')) return null;
+	
+	// Extract content between brackets
 	const innerContent = text.slice(linkStart, -2); // Remove ![[/[[ and ]]
+	
+	// Find the last pipe to separate destination from display text
 	const lastPipeIndex = innerContent.lastIndexOf('|');
 	
 	let destination, linkText;
@@ -184,10 +191,12 @@ export function parseWikiLink(text: string): { text: string; destination: string
 	*/
 export function parseMarkdownLink(text: string): { text: string; destination: string; isEmbed: boolean } | null {
 	if (!text) return null;
+	
 	// Check if it starts with ! for embed
 	const isEmbed = text.startsWith('![');
+	
 	// Match markdown link pattern: [display text](destination) (or with ! prefix)
-	const pattern = isEmbed ? /^!\[([^\]]+)\]\(([^)]+)\)$/ : /^\[([^\]]+)\]\(([^)]+)\)$/;
+	const pattern = isEmbed ? /^!\[([^\]]*)\]\(([^)]+)\)$/ : /^\[([^\]]*)\]\(([^)]+)\)$/;
 	
 	// Match markdown link pattern: [display text](destination)
 	const markdownLinkMatch = text.match(pattern);

@@ -230,8 +230,10 @@ export default class LinkEditorPlugin extends Plugin {
 							shouldBeMarkdown = !parsedLink.isWiki;
 							conversionNotice = `Used text & destination from link in clipboard`;
 						} else {
+							// Don't use clipboard content if it's not a valid link
+							// This prevents plain text like "Murdersville" from being treated as a link
 							linkText = "";
-							linkDest = clipboardText;
+							linkDest = "";
 							shouldBeMarkdown = false;
 							// Don't show any message when clipboard doesn't contain a valid link
 						}
