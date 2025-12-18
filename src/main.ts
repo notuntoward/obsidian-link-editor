@@ -167,7 +167,15 @@ export default class LinkEditorPlugin extends Plugin {
 					if (cursorUrl && !isSelectionUrl) {
 						const original = cursorUrl.trim();
 						const normalized = normalizeUrl(original);
-						linkText = original;
+						
+						// If clipboard has non-link text, use it as the link text
+						const parsedLink = parseClipboardLink(clipboardText);
+						if (clipboardText && !parsedLink && !isUrl(clipboardText)) {
+							linkText = clipboardText;
+						} else {
+							linkText = original;
+						}
+						
 						linkDest = normalized;
 						shouldBeMarkdown = true;
 						shouldSelectText = true;
@@ -230,12 +238,12 @@ export default class LinkEditorPlugin extends Plugin {
 							shouldBeMarkdown = !parsedLink.isWiki;
 							conversionNotice = `Used text & destination from link in clipboard`;
 						} else {
-							// Don't use clipboard content if it's not a valid link
-							// This prevents plain text like "Murdersville" from being treated as a link
-							linkText = "";
+							// If clipboard doesn't contain a valid link, use it as link text only
+							// This allows plain text like "Murdersville" to be used as the link text
+							linkText = clipboardText;
 							linkDest = "";
 							shouldBeMarkdown = false;
-							// Don't show any message when clipboard doesn't contain a valid link
+							// Don't show any message when using plain text as link text
 						}
 					}
 
