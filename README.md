@@ -56,6 +56,26 @@ npm run build
 npm run format
 ```
 
+### Testing
+
+Tests use [Vitest](https://vitest.dev/) and live in the `tests/` directory.
+
+```bash
+# Run tests once
+npm run test:run
+
+# Run tests in watch mode (re-runs on file changes)
+npm test
+
+# Run tests with coverage report
+npm run test:coverage
+
+# Run tests with the Vitest UI (browser-based dashboard)
+npm run test:ui
+```
+
+Test files follow the `*.test.ts` naming convention. When adding new utility functions to `src/utils.ts`, add corresponding tests in `tests/utils.test.ts`.
+
 ## Project Structure
 
 ```
@@ -67,10 +87,14 @@ obsidian-link-editor/
 │   ├── SettingTab.ts        # Plugin settings
 │   ├── types.ts             # TypeScript interfaces
 │   └── utils.ts             # Link format utilities
+├── tests/
+│   ├── diagnostic.test.ts   # Basic vitest sanity check
+│   └── utils.test.ts        # Tests for link format utilities
 ├── styles.css               # Plugin styles
 ├── manifest.json            # Plugin manifest
 ├── package.json             # npm configuration
 ├── tsconfig.json            # TypeScript configuration
+├── vitest.config.ts         # Test configuration
 ├── esbuild.config.mjs       # Build configuration
 └── .hotreload               # Hot-reload marker
 ```
