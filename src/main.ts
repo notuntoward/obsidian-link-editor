@@ -124,8 +124,8 @@ export default class LinkEditorPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: "skip-over-link",
-			name: "Skip over link",
+			id: "close-link",
+			name: "Close link",
 			editorCallback: (editor: Editor, view: MarkdownView) => {
 				const cursor = editor.getCursor();
 				const line = editor.getLine(cursor.line);
