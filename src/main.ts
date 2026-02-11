@@ -130,26 +130,22 @@ export default class LinkEditorPlugin extends Plugin {
 				const cursor = editor.getCursor();
 				const line = editor.getLine(cursor.line);
 
-				// Try to detect existing link at cursor
 				const existingLink = detectLinkAtCursor(line, cursor.ch);
 
 				if (!existingLink) {
-					// No link at cursor, do nothing
 					return;
 				}
 
-				// Compute the skip position
-					const skipPos = computeSkipCursorPosition({
-						linkStart: existingLink.start,
-						linkEnd: existingLink.end,
-						cursorPos: cursor.ch,
-						lineLength: line.length,
-						line: cursor.line,
-						lineCount: editor.lineCount(),
-						prevLineLength: cursor.line > 0 ? editor.getLine(cursor.line - 1).length : 0,
-					});
+				const skipPos = computeSkipCursorPosition({
+					linkStart: existingLink.start,
+					linkEnd: existingLink.end,
+					cursorPos: cursor.ch,
+					lineLength: line.length,
+					line: cursor.line,
+					lineCount: editor.lineCount(),
+					prevLineLength: cursor.line > 0 ? editor.getLine(cursor.line - 1).length : 0,
+				});
 
-				// Move cursor to skip position
 				editor.setCursor(skipPos);
 			},
 		});
