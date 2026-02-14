@@ -1,4 +1,5 @@
 import { Plugin, Editor, MarkdownView } from "obsidian";
+import { Extension } from "@codemirror/state";
 import { LinkEditModal } from "./LinkEditModal";
 import { LinkEditorSettingTab } from "./SettingTab";
 import { PluginSettings, LinkInfo } from "./types";
@@ -9,16 +10,30 @@ import {
 	urlAtCursor
 } from "./utils";
 import { buildLinkText, computeCloseCursorPosition, computeSkipCursorPosition } from "./modalLogic";
+import { createLinkSyntaxHiderExtension } from "./linkSyntaxHider";
 
 const DEFAULT_SETTINGS: PluginSettings = {
 	alwaysMoveToEnd: false,
+	preventLinkExpansion: false,
 };
 
 export default class LinkEditorPlugin extends Plugin {
 	settings!: PluginSettings;
 
+	/**
+	 * Live array registered with `registerEditorExtension`.
+	 * Mutating its contents and calling `app.workspace.updateOptions()`
+	 * toggles the link-syntax-hider extension at runtime.
+	 */
+	private syntaxHiderExtensions: Extension[] = [];
+
 	async onload() {
 		await this.loadSettings();
+
+		// Register the (initially empty) extension array.  We populate it
+		// later based on the user's setting.
+		this.registerEditorExtension(this.syntaxHiderExtensions);
+		this.applySyntaxHiderSetting();
 
 		this.addCommand({
 			id: "edit-link",
@@ -184,6 +199,20 @@ export default class LinkEditorPlugin extends Plugin {
 
 		editor.setCursor(cursorPos);
 		return cursorPos;
+	}
+
+	/**
+	 * Populate or clear the live extensions array so the CM6 link-syntax
+	 * hider is active only when the user has opted in.
+	 */
+	applySyntaxHiderSetting() {
+		this.syntaxHiderExtensions.length = 0;
+		if (this.settings.preventLinkExpansion) {
+			this.syntaxHiderExtensions.push(
+				...createLinkSyntaxHiderExtension(),
+			);
+		}
+		this.app.workspace.updateOptions();
 	}
 
 	onunload() {}

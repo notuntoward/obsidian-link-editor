@@ -106,3 +106,31 @@
   /* Ensure text remains visible with proper contrast */
   color: var(--text-on-accent) !important;
 }
+
+/* ── Prevent Link Expansion ────────────────────────────────────────────
+ * When the body has `.le-prevent-link-expansion`, collapse Obsidian's
+ * own syntax-highlight spans to zero width so raw link syntax is hidden
+ * on the active (unfolded) line.
+ *
+ * Targeted classes (from CM6 / HyperMD markdown tokenizer):
+ *   .cm-formatting-link         – brackets [ ] [[ ]]
+ *   .cm-formatting-link-start   – opening [ or [[
+ *   .cm-formatting-link-end     – closing ] or ]]
+ *   .cm-formatting-link-string  – ( and ) around URL
+ *   .cm-url                     – the URL portion of markdown links
+ *
+ * The display-text span (.cm-link / .cm-hmd-internal-link without
+ * .cm-formatting) is intentionally NOT hidden so it remains editable.
+ */
+body.le-prevent-link-expansion .cm-formatting-link,
+body.le-prevent-link-expansion .cm-formatting-link-string,
+body.le-prevent-link-expansion .cm-url,
+.le-wiki-dest-hidden {
+  font-size: 0 !important;
+  letter-spacing: 0 !important;
+  display: inline !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+}
