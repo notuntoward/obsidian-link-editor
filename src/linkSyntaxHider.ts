@@ -146,6 +146,47 @@ function findWikiLinkSyntaxRanges(
 	return ranges;
 }
 
+function findLinkEndAtPos(
+	lineText: string,
+	lineFrom: number,
+	pos: number,
+): number | null {
+	const mdRe = /(!?\[)([^\]]*)\]\(([^)]+)\)/g;
+	let md: RegExpExecArray | null;
+	while ((md = mdRe.exec(lineText)) !== null) {
+		const fullStart = lineFrom + md.index;
+		const prefixLen = md[1].length;
+		const textLen = md[2].length;
+		const textStart = fullStart + prefixLen;
+		const textEnd = textStart + textLen;
+		const fullEnd = fullStart + md[0].length;
+		if (pos >= textStart && pos <= textEnd) return fullEnd;
+	}
+
+	let searchIdx = 0;
+	while (searchIdx < lineText.length) {
+		const openIdx = lineText.indexOf("[[", searchIdx);
+		if (openIdx === -1) break;
+		const closeIdx = lineText.indexOf("]]", openIdx + 2);
+		if (closeIdx === -1) break;
+
+		const innerStart = openIdx + 2;
+		const innerContent = lineText.substring(innerStart, closeIdx);
+		const pipeIdx = innerContent.lastIndexOf("|");
+		const textStart =
+			pipeIdx === -1
+				? lineFrom + innerStart
+				: lineFrom + innerStart + pipeIdx + 1;
+		const textEnd = lineFrom + closeIdx;
+		const fullEnd = lineFrom + closeIdx + 2;
+
+		if (pos >= textStart && pos <= textEnd) return fullEnd;
+		searchIdx = closeIdx + 2;
+	}
+
+	return null;
+}
+
 function computeHiddenRanges(state: EditorState): HiddenRange[] {
 	const ranges: HiddenRange[] = [];
 	const seenLines = new Set<number>();
