@@ -3,20 +3,20 @@ import { Extension } from "@codemirror/state";
 import { EditLinkModal } from "./EditLinkModal";
 import { SteadyLinksSettingTab } from "./SettingTab";
 import { PluginSettings, LinkInfo } from "./types";
-import { 
+import {
 	parseClipboardLink,
 	detectLinkAtCursor,
 	determineLinkFromContext,
 	urlAtCursor
 } from "./utils";
 import { buildLinkText, computeCloseCursorPosition, computeSkipCursorPosition } from "./modalLogic";
-import { createLinkSyntaxHiderExtension } from "./linkSyntaxHider";
+import { createLinkSyntaxHiderExtension, findLinkRangeAtPos, setTemporarilyVisibleLink } from "./linkSyntaxHider";
+import { EditorView } from "@codemirror/view";
 
 const DEFAULT_SETTINGS: PluginSettings = {
 	alwaysMoveToEnd: false,
 	keepLinksSteady: false,
 };
-
 
 export default class SteadyLinksPlugin extends Plugin {
 	settings!: PluginSettings;
@@ -152,6 +152,14 @@ export default class SteadyLinksPlugin extends Plugin {
 					return;
 				}
 
+				// Clear any temporarily visible link
+				const cm6View = (editor as any).cm as EditorView;
+				if (cm6View) {
+					cm6View.dispatch({
+						effects: setTemporarilyVisibleLink.of(null)
+					});
+				}
+
 				const skipPos = computeSkipCursorPosition({
 					linkStart: existingLink.start,
 					linkEnd: existingLink.end,
@@ -163,6 +171,62 @@ export default class SteadyLinksPlugin extends Plugin {
 				});
 
 				editor.setCursor(skipPos);
+			},
+		});
+
+		this.addCommand({
+			id: "show-link-syntax",
+			name: "Show Link Syntax",
+			editorCallback: (editor: Editor, view: MarkdownView) => {
+				// Get the CM6 view from the editor
+				const cm6View = (editor as any).cm as EditorView;
+				if (!cm6View) {
+					return;
+				}
+
+				const cursor = editor.getCursor();
+				const line = editor.getLine(cursor.line);
+
+				// First, try to detect link at current cursor position using the editor API
+				let existingLink = detectLinkAtCursor(line, cursor.ch);
+
+				// If not found at cursor, try to find any link on the current line
+				// by iterating through potential positions (cursor might be pushed out)
+				if (!existingLink) {
+					// Try positions around the cursor
+					for (let offset = -5; offset <= 5; offset++) {
+						const testPos = cursor.ch + offset;
+						if (testPos >= 0 && testPos <= line.length) {
+							existingLink = detectLinkAtCursor(line, testPos);
+							if (existingLink) {
+								break;
+							}
+						}
+					}
+				}
+
+				if (!existingLink) {
+					return;
+				}
+
+				// Find the full link range (including syntax) using CM6 document positions
+				const docLine = cm6View.state.doc.line(cursor.line + 1); // CM6 lines are 1-indexed
+				
+				// Convert the editor line position to CM6 document position
+				const linkStartPos = docLine.from + existingLink.start;
+				const linkEndPos = docLine.from + existingLink.end;
+				
+				// Try to find the link range at the link's actual position
+				const linkRange = findLinkRangeAtPos(docLine.text, docLine.from, linkStartPos);
+
+				if (!linkRange) {
+					return;
+				}
+
+				// Dispatch effect to temporarily show this link's syntax
+				cm6View.dispatch({
+					effects: setTemporarilyVisibleLink.of(linkRange)
+				});
 			},
 		});
 

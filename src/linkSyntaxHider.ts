@@ -42,7 +42,42 @@ interface HiddenRange {
 	side: "leading" | "trailing";
 }
 
+interface LinkRange {
+	from: number;
+	to: number;
+}
+
 const setSyntaxHiderEnabled = StateEffect.define<boolean>();
+
+// State effect to temporarily show a specific link's syntax
+const setTemporarilyVisibleLink = StateEffect.define<LinkRange | null>();
+
+const temporarilyVisibleLinkField = StateField.define<LinkRange | null>({
+	create() {
+		return null;
+	},
+	update(value, tr) {
+		for (const effect of tr.effects) {
+			if (effect.is(setTemporarilyVisibleLink)) {
+				return effect.value;
+			}
+		}
+		// Clear if cursor moves away from the temporarily visible link
+		if (tr.selection && value) {
+			const oldSel = tr.startState.selection.main;
+			const newSel = tr.state.selection.main;
+			
+			// If cursor moved, check if it's still within the link
+			if (oldSel.head !== newSel.head) {
+				// Clear if cursor is no longer within the temporarily visible link range
+				if (newSel.head < value.from || newSel.head > value.to) {
+					return null;
+				}
+			}
+		}
+		return value;
+	},
+});
 
 const syntaxHiderEnabledField = StateField.define<boolean>({
 	create() {
@@ -185,12 +220,25 @@ function computeHiddenRanges(state: EditorState): HiddenRange[] {
 		seenLines.add(state.doc.lineAt(sel.anchor).number);
 	}
 
+	const temporarilyVisible = state.field(temporarilyVisibleLinkField, false);
+
 	for (const lineNo of seenLines) {
 		const line = state.doc.line(lineNo);
-		ranges.push(
+		const lineRanges = [
 			...findMarkdownLinkSyntaxRanges(line.text, line.from),
 			...findWikiLinkSyntaxRanges(line.text, line.from),
-		);
+		];
+
+		// Filter out ranges that belong to the temporarily visible link
+		for (const range of lineRanges) {
+			if (temporarilyVisible) {
+				// Skip this range if it's part of the temporarily visible link
+				if (range.from >= temporarilyVisible.from && range.to <= temporarilyVisible.to) {
+					continue;
+				}
+			}
+			ranges.push(range);
+		}
 	}
 
 	ranges.sort((a, b) => a.from - b.from || a.to - b.to);
@@ -206,7 +254,9 @@ const hiddenRangesField = StateField.define<HiddenRange[]>({
 		return computeHiddenRanges(state);
 	},
 	update(prev, tr) {
-		if (tr.docChanged || tr.selection) {
+		// Recompute if doc changed, selection changed, or temporarily visible link changed
+		const tempVisibleChanged = tr.effects.some(e => e.is(setTemporarilyVisibleLink));
+		if (tr.docChanged || tr.selection || tempVisibleChanged) {
 			return computeHiddenRanges(tr.state);
 		}
 		return prev;
@@ -253,10 +303,20 @@ class HiddenSyntaxReplacePlugin implements PluginValue {
 	}
 
 	update(update: ViewUpdate) {
+		// Rebuild decorations if:
+		// - Document changed
+		// - Selection changed
+		// - Viewport changed
+		// - Temporarily visible link field changed
+		const tempVisibleChanged = update.transactions.some(tr =>
+			tr.effects.some(e => e.is(setTemporarilyVisibleLink))
+		);
+		
 		if (
 			update.docChanged ||
 			update.selectionSet ||
-			update.viewportChanged
+			update.viewportChanged ||
+			tempVisibleChanged
 		) {
 			this.decorations = this.build(update.state);
 		}
@@ -785,6 +845,60 @@ function findLinkEndAtPos(
 	return null;
 }
 
+/**
+ * Find the full link range at a given position (including both leading and trailing syntax).
+ * Returns null if no link is found at the position.
+ */
+export function findLinkRangeAtPos(
+	lineText: string,
+	lineFrom: number,
+	pos: number,
+): LinkRange | null {
+	const ranges = [
+		...findMarkdownLinkSyntaxRanges(lineText, lineFrom),
+		...findWikiLinkSyntaxRanges(lineText, lineFrom),
+	];
+
+	// Group ranges by link (each link has leading and trailing ranges)
+	const links = new Map<number, { from: number; to: number }>();
+	
+	for (const r of ranges) {
+		if (pos < r.from || pos > r.to) continue;
+		
+		// Find all ranges for this link by looking for adjacent ranges
+		let linkStart = r.from;
+		let linkEnd = r.to;
+		
+		// Look for the leading range if this is trailing
+		if (r.side === "trailing") {
+			for (const other of ranges) {
+				if (other.side === "leading" && other.to <= r.from) {
+					// Check if they're part of the same link (no significant gap)
+					const textBetween = lineText.substring(other.to - lineFrom, r.from - lineFrom);
+					if (!textBetween.includes('\n') && textBetween.length < 1000) {
+						linkStart = Math.min(linkStart, other.from);
+					}
+				}
+			}
+		}
+		
+		// Look for the trailing range if this is leading
+		if (r.side === "leading") {
+			for (const other of ranges) {
+				if (other.side === "trailing" && other.from >= r.to) {
+					const textBetween = lineText.substring(r.to - lineFrom, other.from - lineFrom);
+					if (!textBetween.includes('\n') && textBetween.length < 1000) {
+						linkEnd = Math.max(linkEnd, other.to);
+					}
+				}
+			}
+		}
+		
+		return { from: linkStart, to: linkEnd };
+	}
+	
+	return null;
+}
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -796,6 +910,7 @@ export function createLinkSyntaxHiderExtension() {
 		syntaxHiderModePlugin,
 		hiddenRangesField,
 		bodyClassPlugin,
+		temporarilyVisibleLinkField,
 		Prec.highest(hiddenSyntaxReplacePlugin),
 		Prec.highest(cursorCorrector),
 		Prec.highest(enterAtLinkEndKeymap),
@@ -812,5 +927,6 @@ export {
 	correctCursorPos,
 	listContinuation,
 	findLinkEndAtPos,
+	setTemporarilyVisibleLink,
 };
-export type { HiddenRange };
+export type { HiddenRange, LinkRange };
