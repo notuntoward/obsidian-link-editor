@@ -34,6 +34,36 @@
   font-family: var(--font-text) !important;
 }
 
+/* ── Prevent Link Expansion ────────────────────────────────────────────
+ * When the body has `.le-prevent-link-expansion`, collapse Obsidian's
+ * own syntax-highlight spans to zero width so raw link syntax is hidden
+ * on the active (unfolded) line.
+ *
+ * Targeted classes (from CM6 / HyperMD markdown tokenizer):
+ *   .cm-formatting-link         – brackets [ ] [[ ]]
+ *   .cm-formatting-link-start   – opening [ or [[
+ *   .cm-formatting-link-end     – closing ] or ]]
+ *   .cm-formatting-link-string  – ( and ) around URL
+ *   .cm-url                     – the URL portion of markdown links
+ *
+ * The display-text span (.cm-link / .cm-hmd-internal-link without
+ * .cm-formatting) is intentionally NOT hidden so it remains editable.
+ */
+body.le-prevent-link-expansion .le-hidden-syntax-anchor {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+/* Ensure cursor remains visible when inside hidden link syntax.
+ * CodeMirror calculates cursor height from font metrics, so we need to
+ * ensure the cursor element has a minimum height. */
+body.le-prevent-link-expansion .cm-cursor {
+  min-height: 1em !important;
+}
+
 /* Reduce spacing in warnings container */
 .link-warnings-container {
   margin-top: 0.5em;
@@ -107,30 +137,3 @@
   color: var(--text-on-accent) !important;
 }
 
-/* ── Prevent Link Expansion ────────────────────────────────────────────
- * When the body has `.le-prevent-link-expansion`, collapse Obsidian's
- * own syntax-highlight spans to zero width so raw link syntax is hidden
- * on the active (unfolded) line.
- *
- * Targeted classes (from CM6 / HyperMD markdown tokenizer):
- *   .cm-formatting-link         – brackets [ ] [[ ]]
- *   .cm-formatting-link-start   – opening [ or [[
- *   .cm-formatting-link-end     – closing ] or ]]
- *   .cm-formatting-link-string  – ( and ) around URL
- *   .cm-url                     – the URL portion of markdown links
- *
- * The display-text span (.cm-link / .cm-hmd-internal-link without
- * .cm-formatting) is intentionally NOT hidden so it remains editable.
- */
-body.le-prevent-link-expansion .cm-formatting-link,
-body.le-prevent-link-expansion .cm-formatting-link-string,
-body.le-prevent-link-expansion .cm-url,
-.le-wiki-dest-hidden {
-  font-size: 0 !important;
-  letter-spacing: 0 !important;
-  display: inline !important;
-  overflow: hidden !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  border: none !important;
-}

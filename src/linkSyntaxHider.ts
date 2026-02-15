@@ -3,14 +3,12 @@
  * enters them.
  *
  * Strategy:
- *   • **CSS body class** hides Obsidian's bracket/URL tokens via the
- *     stylesheet (`.cm-formatting-link`, `.cm-url`, etc.).
- *   • A **ViewPlugin** adds `Decoration.mark` on wiki-link destination+pipe
- *     text (the `dest|` in `[[dest|text]]`) which shares the same Obsidian
- *     class as the display text and can't be targeted by CSS alone.
- *   • An **updateListener** corrects the cursor position synchronously when
+ *   - A **ViewPlugin** replaces hidden syntax ranges with zero-width widgets
+ *     so the syntax is not rendered as text nodes (prevents zero-metric
+ *     cursor positions).
+ *   - An **updateListener** corrects the cursor position synchronously when
  *     it lands inside a hidden region, giving one-keypress skip.
- *   • A **transactionFilter** protects hidden ranges from user-initiated
+ *   - A **transactionFilter** protects hidden ranges from user-initiated
  *     edits while allowing programmatic changes (Edit Link command).
  */
 
@@ -21,6 +19,7 @@ import {
 	ViewPlugin,
 	ViewUpdate,
 	PluginValue,
+	WidgetType,
 } from "@codemirror/view";
 import {
 	RangeSetBuilder,
@@ -38,6 +37,26 @@ interface HiddenRange {
 	to: number;
 	side: "leading" | "trailing";
 }
+
+// ---------------------------------------------------------------------------
+// Decorations
+// ---------------------------------------------------------------------------
+
+class HiddenSyntaxWidget extends WidgetType {
+	toDOM(): HTMLElement {
+		const span = document.createElement("span");
+		span.className = "le-hidden-syntax-anchor";
+		return span;
+	}
+
+	ignoreEvent(): boolean {
+		return false;
+	}
+}
+
+const hiddenSyntaxReplace = Decoration.replace({
+	widget: new HiddenSyntaxWidget(),
+});
 
 // ---------------------------------------------------------------------------
 // Link detection (raw line text)
@@ -103,35 +122,6 @@ function findWikiLinkSyntaxRanges(
 	return ranges;
 }
 
-function findWikiDestMarkRanges(
-	lineText: string,
-	lineFrom: number,
-): { from: number; to: number }[] {
-	const ranges: { from: number; to: number }[] = [];
-	let searchIdx = 0;
-
-	while (searchIdx < lineText.length) {
-		const openIdx = lineText.indexOf("[[", searchIdx);
-		if (openIdx === -1) break;
-		const closeIdx = lineText.indexOf("]]", openIdx + 2);
-		if (closeIdx === -1) break;
-
-		const innerStart = openIdx + 2;
-		const innerContent = lineText.substring(innerStart, closeIdx);
-		const pipeIdx = innerContent.lastIndexOf("|");
-
-		if (pipeIdx !== -1) {
-			const destStart = lineFrom + innerStart;
-			const destEnd = lineFrom + innerStart + pipeIdx + 1;
-			if (destStart < destEnd) {
-				ranges.push({ from: destStart, to: destEnd });
-			}
-		}
-		searchIdx = closeIdx + 2;
-	}
-	return ranges;
-}
-
 function computeHiddenRanges(state: EditorState): HiddenRange[] {
 	const ranges: HiddenRange[] = [];
 	const seenLines = new Set<number>();
@@ -170,12 +160,28 @@ const hiddenRangesField = StateField.define<HiddenRange[]>({
 });
 
 // ---------------------------------------------------------------------------
-// ViewPlugin — mark decorations for wiki-link destinations
+// Body class manager
 // ---------------------------------------------------------------------------
 
-const wikiDestMark = Decoration.mark({ class: "le-wiki-dest-hidden" });
+const BODY_CLASS = "le-prevent-link-expansion";
 
-class WikiDestHiderPlugin implements PluginValue {
+class BodyClassPlugin implements PluginValue {
+	constructor(_view: EditorView) {
+		document.body.classList.add(BODY_CLASS);
+	}
+	update(_update: ViewUpdate) {}
+	destroy() {
+		document.body.classList.remove(BODY_CLASS);
+	}
+}
+
+const bodyClassPlugin = ViewPlugin.fromClass(BodyClassPlugin);
+
+// ---------------------------------------------------------------------------
+// ViewPlugin - replace hidden syntax ranges
+// ---------------------------------------------------------------------------
+
+class HiddenSyntaxReplacePlugin implements PluginValue {
 	decorations: DecorationSet;
 
 	constructor(view: EditorView) {
@@ -193,24 +199,12 @@ class WikiDestHiderPlugin implements PluginValue {
 	}
 
 	private build(state: EditorState): DecorationSet {
-		const seenLines = new Set<number>();
-		for (const sel of state.selection.ranges) {
-			seenLines.add(state.doc.lineAt(sel.head).number);
-			seenLines.add(state.doc.lineAt(sel.anchor).number);
-		}
+		const ranges = computeHiddenRanges(state);
+		if (ranges.length === 0) return Decoration.none;
 
-		const markRanges: { from: number; to: number }[] = [];
-		for (const lineNo of seenLines) {
-			const line = state.doc.line(lineNo);
-			markRanges.push(...findWikiDestMarkRanges(line.text, line.from));
-		}
-
-		if (markRanges.length === 0) return Decoration.none;
-
-		markRanges.sort((a, b) => a.from - b.from);
 		const builder = new RangeSetBuilder<Decoration>();
-		for (const r of markRanges) {
-			builder.add(r.from, r.to, wikiDestMark);
+		for (const r of ranges) {
+			if (r.from < r.to) builder.add(r.from, r.to, hiddenSyntaxReplace);
 		}
 		return builder.finish();
 	}
@@ -218,9 +212,12 @@ class WikiDestHiderPlugin implements PluginValue {
 	destroy() {}
 }
 
-const wikiDestPlugin = ViewPlugin.fromClass(WikiDestHiderPlugin, {
+const hiddenSyntaxReplacePlugin = ViewPlugin.fromClass(
+	HiddenSyntaxReplacePlugin,
+	{
 	decorations: (v) => v.decorations,
-});
+	},
+);
 
 // ---------------------------------------------------------------------------
 // Cursor correction
@@ -323,6 +320,8 @@ const cursorCorrector = EditorView.updateListener.of((update) => {
 	}
 });
 
+
+
 // ---------------------------------------------------------------------------
 // Edit protection
 // ---------------------------------------------------------------------------
@@ -343,23 +342,6 @@ const protectSyntaxFilter = EditorState.transactionFilter.of((tr) => {
 	return dominated ? [] : tr;
 });
 
-// ---------------------------------------------------------------------------
-// Body class manager
-// ---------------------------------------------------------------------------
-
-const BODY_CLASS = "le-prevent-link-expansion";
-
-class BodyClassPlugin implements PluginValue {
-	constructor(_view: EditorView) {
-		document.body.classList.add(BODY_CLASS);
-	}
-	update(_update: ViewUpdate) {}
-	destroy() {
-		document.body.classList.remove(BODY_CLASS);
-	}
-}
-
-const bodyClassPlugin = ViewPlugin.fromClass(BodyClassPlugin);
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -369,7 +351,7 @@ export function createLinkSyntaxHiderExtension() {
 	return [
 		hiddenRangesField,
 		bodyClassPlugin,
-		wikiDestPlugin,
+		hiddenSyntaxReplacePlugin,
 		cursorCorrector,
 		protectSyntaxFilter,
 	];
