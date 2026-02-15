@@ -26,6 +26,7 @@ import {
 	EditorState,
 	EditorSelection,
 	StateField,
+	Transaction,
 } from "@codemirror/state";
 
 // ---------------------------------------------------------------------------
@@ -227,11 +228,14 @@ function correctCursorPos(
 	pos: number,
 	oldPos: number,
 	hidden: HiddenRange[],
-	docLength: number,
+	doc: EditorState["doc"],
 ): number | null {
 	for (const h of hidden) {
 		let inside: boolean;
 		if (h.side === "leading") {
+			const movingRight = pos >= oldPos;
+			if (!movingRight && pos === h.from) return null;
+			if (pos === h.from && pos === doc.lineAt(pos).from) return null;
 			inside = pos >= h.from && pos < h.to;
 		} else {
 			inside = pos > h.from && pos <= h.to;
@@ -243,7 +247,7 @@ function correctCursorPos(
 			return movingRight ? h.to : Math.max(0, h.from - 1);
 		}
 		return movingRight
-			? Math.min(docLength, h.to + 1)
+			? Math.min(doc.length, h.to + 1)
 			: h.from;
 	}
 	return null;
@@ -285,7 +289,6 @@ const cursorCorrector = EditorView.updateListener.of((update) => {
 	const hidden = computeHiddenRangesForPositions(state.doc, newSel);
 	if (hidden.length === 0) return;
 
-	const docLen = state.doc.length;
 	let needsAdjust = false;
 
 	const adjusted = newSel.ranges.map((range, i) => {
@@ -296,7 +299,7 @@ const cursorCorrector = EditorView.updateListener.of((update) => {
 		let head = range.head;
 
 		for (let pass = 0; pass < 3; pass++) {
-			const corrected = correctCursorPos(head, oldHead, hidden, docLen);
+			const corrected = correctCursorPos(head, oldHead, hidden, state.doc);
 			if (corrected === null) break;
 			head = corrected;
 			needsAdjust = true;
@@ -326,6 +329,53 @@ const cursorCorrector = EditorView.updateListener.of((update) => {
 // Edit protection
 // ---------------------------------------------------------------------------
 
+const enterAtLinkEndFix = EditorState.transactionFilter.of((tr) => {
+	if (!tr.docChanged) return tr;
+	if (!tr.isUserEvent("input")) return tr;
+	const startSel = tr.startState.selection;
+	if (startSel.ranges.length !== 1) return tr;
+	const range = startSel.ranges[0];
+	if (!range.empty) return tr;
+
+	let insertText: string | undefined;
+	let insertFrom = -1;
+	let insertTo = -1;
+	let insertCount = 0;
+
+	tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+		const text = inserted.toString();
+		if (!text.includes("\n")) return;
+		insertCount += 1;
+		insertText = text;
+		insertFrom = fromA;
+		insertTo = toA;
+	});
+
+	if (!insertText || insertCount !== 1) return tr;
+	if (insertFrom !== insertTo) return tr;
+	if (insertFrom !== range.head) return tr;
+
+	const hidden = computeHiddenRanges(tr.startState);
+	if (hidden.length === 0) return tr;
+
+	const line = tr.startState.doc.lineAt(insertFrom);
+	for (const h of hidden) {
+		if (h.side !== "trailing") continue;
+		if (insertFrom !== h.from) continue;
+		if (h.to !== line.to) continue;
+
+		const userEvent = tr.annotation(Transaction.userEvent) ?? undefined;
+		return tr.startState.update({
+			changes: { from: h.to, to: h.to, insert: insertText },
+			selection: EditorSelection.cursor(h.to + insertText.length),
+			scrollIntoView: true,
+			userEvent,
+		});
+	}
+
+	return tr;
+});
+
 const protectSyntaxFilter = EditorState.transactionFilter.of((tr) => {
 	if (!tr.docChanged) return tr;
 	if (!tr.isUserEvent("input") && !tr.isUserEvent("delete")) return tr;
@@ -353,6 +403,7 @@ export function createLinkSyntaxHiderExtension() {
 		bodyClassPlugin,
 		hiddenSyntaxReplacePlugin,
 		cursorCorrector,
+		enterAtLinkEndFix,
 		protectSyntaxFilter,
 	];
 }
