@@ -25,6 +25,7 @@ import {
 	RangeSetBuilder,
 	EditorState,
 	EditorSelection,
+	StateEffect,
 	StateField,
 	Transaction,
 } from "@codemirror/state";
@@ -37,6 +38,28 @@ interface HiddenRange {
 	from: number;
 	to: number;
 	side: "leading" | "trailing";
+}
+
+const setSyntaxHiderEnabled = StateEffect.define<boolean>();
+
+const syntaxHiderEnabledField = StateField.define<boolean>({
+	create() {
+		return false;
+	},
+	update(value, tr) {
+		for (const effect of tr.effects) {
+			if (effect.is(setSyntaxHiderEnabled)) {
+				value = effect.value;
+			}
+		}
+		return value;
+	},
+});
+
+function isLivePreview(view: EditorView): boolean {
+	const sourceView = view.dom.closest(".markdown-source-view");
+	if (!sourceView) return true;
+	return sourceView.classList.contains("is-live-preview");
 }
 
 // ---------------------------------------------------------------------------
@@ -123,6 +146,47 @@ function findWikiLinkSyntaxRanges(
 	return ranges;
 }
 
+function findLinkEndAtPos(
+	lineText: string,
+	lineFrom: number,
+	pos: number,
+): number | null {
+	const mdRe = /(!?\[)([^\]]*)\]\(([^)]+)\)/g;
+	let md: RegExpExecArray | null;
+	while ((md = mdRe.exec(lineText)) !== null) {
+		const fullStart = lineFrom + md.index;
+		const prefixLen = md[1].length;
+		const textLen = md[2].length;
+		const textStart = fullStart + prefixLen;
+		const textEnd = textStart + textLen;
+		const fullEnd = fullStart + md[0].length;
+		if (pos >= textStart && pos <= textEnd) return fullEnd;
+	}
+
+	let searchIdx = 0;
+	while (searchIdx < lineText.length) {
+		const openIdx = lineText.indexOf("[[", searchIdx);
+		if (openIdx === -1) break;
+		const closeIdx = lineText.indexOf("]]", openIdx + 2);
+		if (closeIdx === -1) break;
+
+		const innerStart = openIdx + 2;
+		const innerContent = lineText.substring(innerStart, closeIdx);
+		const pipeIdx = innerContent.lastIndexOf("|");
+		const textStart =
+			pipeIdx === -1
+				? lineFrom + innerStart
+				: lineFrom + innerStart + pipeIdx + 1;
+		const textEnd = lineFrom + closeIdx;
+		const fullEnd = lineFrom + closeIdx + 2;
+
+		if (pos >= textStart && pos <= textEnd) return fullEnd;
+		searchIdx = closeIdx + 2;
+	}
+
+	return null;
+}
+
 function computeHiddenRanges(state: EditorState): HiddenRange[] {
 	const ranges: HiddenRange[] = [];
 	const seenLines = new Set<number>();
@@ -200,6 +264,9 @@ class HiddenSyntaxReplacePlugin implements PluginValue {
 	}
 
 	private build(state: EditorState): DecorationSet {
+		if (!state.field(syntaxHiderEnabledField, false)) {
+			return Decoration.none;
+		}
 		const ranges = computeHiddenRanges(state);
 		if (ranges.length === 0) return Decoration.none;
 
@@ -216,9 +283,38 @@ class HiddenSyntaxReplacePlugin implements PluginValue {
 const hiddenSyntaxReplacePlugin = ViewPlugin.fromClass(
 	HiddenSyntaxReplacePlugin,
 	{
-	decorations: (v) => v.decorations,
+		decorations: (v) => v.decorations,
 	},
 );
+
+class SyntaxHiderModePlugin implements PluginValue {
+	private syncing = false;
+
+	constructor(private view: EditorView) {
+		this.sync(view);
+	}
+
+	update(update: ViewUpdate) {
+		if (this.syncing) return;
+		this.sync(update.view);
+	}
+
+	private sync(view: EditorView) {
+		const enabled = isLivePreview(view);
+		const current = view.state.field(syntaxHiderEnabledField, false);
+		if (enabled === current) return;
+		this.syncing = true;
+		try {
+			view.dispatch({ effects: setSyntaxHiderEnabled.of(enabled) });
+		} finally {
+			this.syncing = false;
+		}
+	}
+
+	destroy() {}
+}
+
+const syntaxHiderModePlugin = ViewPlugin.fromClass(SyntaxHiderModePlugin);
 
 // ---------------------------------------------------------------------------
 // Cursor correction
@@ -238,7 +334,7 @@ function correctCursorPos(
 			if (pos === h.from && pos === doc.lineAt(pos).from) return null;
 			inside = pos >= h.from && pos < h.to;
 		} else {
-			inside = pos > h.from && pos <= h.to;
+			inside = pos >= h.from && pos <= h.to;
 		}
 		if (!inside) continue;
 
@@ -281,6 +377,7 @@ const CORRECTING = "__leSyntaxCorrecting";
 const cursorCorrector = EditorView.updateListener.of((update) => {
 	if (!update.selectionSet) return;
 	if ((update.view as any)[CORRECTING]) return;
+	if (!update.state.field(syntaxHiderEnabledField, false)) return;
 
 	const state = update.state;
 	const newSel = state.selection;
@@ -288,6 +385,44 @@ const cursorCorrector = EditorView.updateListener.of((update) => {
 
 	const hidden = computeHiddenRangesForPositions(state.doc, newSel);
 	if (hidden.length === 0) return;
+
+	let skipLeadingInsertionCorrection = false;
+	if (update.docChanged) {
+		let insertText: string | undefined;
+		let insertFrom = -1;
+		let insertTo = -1;
+		let insertCount = 0;
+
+		update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+			const text = inserted.toString();
+			insertCount += 1;
+			insertText = text;
+			insertFrom = fromA;
+			insertTo = toA;
+		});
+
+		if (
+			insertText !== undefined &&
+			insertCount === 1 &&
+			insertFrom === insertTo &&
+			!insertText.includes("\n") &&
+			newSel.ranges.length === 1 &&
+			newSel.main.empty
+		) {
+			const safeInsertText = insertText;
+			const head = newSel.main.head;
+			if (head === insertFrom + safeInsertText.length) {
+				skipLeadingInsertionCorrection = hidden.some(
+					(h) =>
+						h.side === "leading" &&
+						h.from === head &&
+						insertFrom === h.from - safeInsertText.length,
+				);
+			}
+		}
+	}
+
+	if (skipLeadingInsertionCorrection) return;
 
 	let needsAdjust = false;
 
@@ -332,6 +467,7 @@ const cursorCorrector = EditorView.updateListener.of((update) => {
 const enterAtLinkEndFix = EditorState.transactionFilter.of((tr) => {
 	if (!tr.docChanged) return tr;
 	if (!tr.isUserEvent("input")) return tr;
+	if (!tr.startState.field(syntaxHiderEnabledField, false)) return tr;
 	const startSel = tr.startState.selection;
 	if (startSel.ranges.length !== 1) return tr;
 	const range = startSel.ranges[0];
@@ -359,10 +495,12 @@ const enterAtLinkEndFix = EditorState.transactionFilter.of((tr) => {
 	if (hidden.length === 0) return tr;
 
 	const line = tr.startState.doc.lineAt(insertFrom);
+	const linkEnd = findLinkEndAtPos(line.text, line.from, insertFrom);
+	if (linkEnd === null) return tr;
 	for (const h of hidden) {
 		if (h.side !== "trailing") continue;
-		if (insertFrom !== h.from) continue;
 		if (h.to !== line.to) continue;
+		if (linkEnd !== h.to) continue;
 
 		const userEvent = tr.annotation(Transaction.userEvent) ?? undefined;
 		return tr.startState.update({
@@ -376,9 +514,58 @@ const enterAtLinkEndFix = EditorState.transactionFilter.of((tr) => {
 	return tr;
 });
 
+const insertAtLinkStartFix = EditorState.transactionFilter.of((tr) => {
+	if (!tr.docChanged) return tr;
+	if (!tr.isUserEvent("input")) return tr;
+	if (!tr.startState.field(syntaxHiderEnabledField, false)) return tr;
+	const startSel = tr.startState.selection;
+	if (startSel.ranges.length !== 1) return tr;
+	const range = startSel.ranges[0];
+	if (!range.empty) return tr;
+
+	let insertText: string | undefined;
+	let insertFrom = -1;
+	let insertTo = -1;
+	let insertCount = 0;
+
+	tr.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
+		const text = inserted.toString();
+		if (text.includes("\n")) return;
+		insertCount += 1;
+		insertText = text;
+		insertFrom = fromA;
+		insertTo = toA;
+	});
+
+	if (!insertText || insertCount !== 1) return tr;
+	if (insertFrom !== insertTo) return tr;
+	if (insertFrom !== range.head) return tr;
+
+	const hidden = computeHiddenRanges(tr.startState);
+	if (hidden.length === 0) return tr;
+
+	const line = tr.startState.doc.lineAt(insertFrom);
+	for (const h of hidden) {
+		if (h.side !== "leading") continue;
+		if (h.from !== line.from) continue;
+		if (insertFrom !== h.to) continue;
+
+		const userEvent = tr.annotation(Transaction.userEvent) ?? undefined;
+		return tr.startState.update({
+			changes: { from: h.from, to: h.from, insert: insertText },
+			selection: EditorSelection.cursor(h.from + insertText.length),
+			scrollIntoView: true,
+			userEvent,
+		});
+	}
+
+	return tr;
+});
+
 const protectSyntaxFilter = EditorState.transactionFilter.of((tr) => {
 	if (!tr.docChanged) return tr;
 	if (!tr.isUserEvent("input") && !tr.isUserEvent("delete")) return tr;
+	if (!tr.startState.field(syntaxHiderEnabledField, false)) return tr;
 
 	const hidden = tr.startState.field(hiddenRangesField, false);
 	if (!hidden || hidden.length === 0) return tr;
@@ -399,11 +586,14 @@ const protectSyntaxFilter = EditorState.transactionFilter.of((tr) => {
 
 export function createLinkSyntaxHiderExtension() {
 	return [
+		syntaxHiderEnabledField,
+		syntaxHiderModePlugin,
 		hiddenRangesField,
 		bodyClassPlugin,
 		hiddenSyntaxReplacePlugin,
 		cursorCorrector,
 		enterAtLinkEndFix,
+		insertAtLinkStartFix,
 		protectSyntaxFilter,
 	];
 }
