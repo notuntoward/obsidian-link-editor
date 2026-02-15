@@ -25,6 +25,7 @@ import {
 	RangeSetBuilder,
 	EditorState,
 	EditorSelection,
+	Prec,
 	StateEffect,
 	StateField,
 	Transaction,
@@ -58,8 +59,36 @@ const syntaxHiderEnabledField = StateField.define<boolean>({
 
 function isLivePreview(view: EditorView): boolean {
 	const sourceView = view.dom.closest(".markdown-source-view");
-	if (!sourceView) return true;
-	return sourceView.classList.contains("is-live-preview");
+	if (!sourceView) return false;
+	if (sourceView.classList.contains("is-source-mode")) return false;
+	if (sourceView.classList.contains("is-live-preview")) return true;
+	const dataMode = sourceView.getAttribute("data-mode");
+	if (dataMode === "source") return false;
+	if (dataMode === "live" || dataMode === "preview") return true;
+	const mode = getModeForView(view);
+	if (mode === "source") return false;
+	if (mode === "live" || mode === "preview") return true;
+	return true;
+}
+
+function getModeForView(
+	view: EditorView,
+): "source" | "preview" | "live" | null {
+	const app = (window as any).app;
+	if (!app?.workspace?.getLeavesOfType) return null;
+	const leaves = app.workspace.getLeavesOfType("markdown");
+	for (const leaf of leaves) {
+		const markdownView = leaf?.view as any;
+		const contentEl: HTMLElement | undefined =
+			markdownView?.contentEl ?? markdownView?.containerEl;
+		if (!contentEl) continue;
+		if (!contentEl.contains(view.dom)) continue;
+		const mode = markdownView?.getMode?.();
+		if (mode === "source" || mode === "preview" || mode === "live") {
+			return mode;
+		}
+	}
+	return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,47 +175,6 @@ function findWikiLinkSyntaxRanges(
 	return ranges;
 }
 
-function findLinkEndAtPos(
-	lineText: string,
-	lineFrom: number,
-	pos: number,
-): number | null {
-	const mdRe = /(!?\[)([^\]]*)\]\(([^)]+)\)/g;
-	let md: RegExpExecArray | null;
-	while ((md = mdRe.exec(lineText)) !== null) {
-		const fullStart = lineFrom + md.index;
-		const prefixLen = md[1].length;
-		const textLen = md[2].length;
-		const textStart = fullStart + prefixLen;
-		const textEnd = textStart + textLen;
-		const fullEnd = fullStart + md[0].length;
-		if (pos >= textStart && pos <= textEnd) return fullEnd;
-	}
-
-	let searchIdx = 0;
-	while (searchIdx < lineText.length) {
-		const openIdx = lineText.indexOf("[[", searchIdx);
-		if (openIdx === -1) break;
-		const closeIdx = lineText.indexOf("]]", openIdx + 2);
-		if (closeIdx === -1) break;
-
-		const innerStart = openIdx + 2;
-		const innerContent = lineText.substring(innerStart, closeIdx);
-		const pipeIdx = innerContent.lastIndexOf("|");
-		const textStart =
-			pipeIdx === -1
-				? lineFrom + innerStart
-				: lineFrom + innerStart + pipeIdx + 1;
-		const textEnd = lineFrom + closeIdx;
-		const fullEnd = lineFrom + closeIdx + 2;
-
-		if (pos >= textStart && pos <= textEnd) return fullEnd;
-		searchIdx = closeIdx + 2;
-	}
-
-	return null;
-}
-
 function computeHiddenRanges(state: EditorState): HiddenRange[] {
 	const ranges: HiddenRange[] = [];
 	const seenLines = new Set<number>();
@@ -231,10 +219,20 @@ const hiddenRangesField = StateField.define<HiddenRange[]>({
 const BODY_CLASS = "le-prevent-link-expansion";
 
 class BodyClassPlugin implements PluginValue {
-	constructor(_view: EditorView) {
-		document.body.classList.add(BODY_CLASS);
+	private enabled = false;
+
+	constructor(private view: EditorView) {
+		this.sync(view);
 	}
-	update(_update: ViewUpdate) {}
+	update(update: ViewUpdate) {
+		this.sync(update.view);
+	}
+	private sync(view: EditorView) {
+		const enabled = view.state.field(syntaxHiderEnabledField, false) ?? false;
+		if (enabled === this.enabled) return;
+		this.enabled = enabled;
+		document.body.classList.toggle(BODY_CLASS, enabled);
+	}
 	destroy() {
 		document.body.classList.remove(BODY_CLASS);
 	}
@@ -289,14 +287,23 @@ const hiddenSyntaxReplacePlugin = ViewPlugin.fromClass(
 
 class SyntaxHiderModePlugin implements PluginValue {
 	private syncing = false;
+	private pendingSync: number | null = null;
 
 	constructor(private view: EditorView) {
-		this.sync(view);
+		this.scheduleSync(view);
 	}
 
 	update(update: ViewUpdate) {
 		if (this.syncing) return;
-		this.sync(update.view);
+		this.scheduleSync(update.view);
+	}
+
+	private scheduleSync(view: EditorView) {
+		if (this.pendingSync !== null) return;
+		this.pendingSync = window.setTimeout(() => {
+			this.pendingSync = null;
+			this.sync(view);
+		}, 0);
 	}
 
 	private sync(view: EditorView) {
@@ -612,11 +619,11 @@ export function createLinkSyntaxHiderExtension() {
 		syntaxHiderModePlugin,
 		hiddenRangesField,
 		bodyClassPlugin,
-		hiddenSyntaxReplacePlugin,
-		cursorCorrector,
-		enterAtLinkEndFix,
-		insertAtLinkStartFix,
-		protectSyntaxFilter,
+		Prec.highest(hiddenSyntaxReplacePlugin),
+		Prec.highest(cursorCorrector),
+		Prec.highest(enterAtLinkEndFix),
+		Prec.highest(insertAtLinkStartFix),
+		Prec.highest(protectSyntaxFilter),
 	];
 }
 
