@@ -34,8 +34,8 @@
   font-family: var(--font-text) !important;
 }
 
-/* ── Prevent Link Expansion ────────────────────────────────────────────
- * When the body has `.le-prevent-link-expansion`, collapse Obsidian's
+/* ── Keep Links Steady ────────────────────────────────────────────
+ * When the body has `.le-keep-links-steady`, collapse Obsidian's
  * own syntax-highlight spans to zero width so raw link syntax is hidden
  * on the active (unfolded) line.
  *
@@ -49,7 +49,7 @@
  * The display-text span (.cm-link / .cm-hmd-internal-link without
  * .cm-formatting) is intentionally NOT hidden so it remains editable.
  */
-body.le-prevent-link-expansion .le-hidden-syntax-anchor {
+body.le-keep-links-steady .le-hidden-syntax-anchor {
   display: inline-block;
   width: 0;
   height: 0;
@@ -60,7 +60,7 @@ body.le-prevent-link-expansion .le-hidden-syntax-anchor {
 /* Ensure cursor remains visible when inside hidden link syntax.
  * CodeMirror calculates cursor height from font metrics, so we need to
  * ensure the cursor element has a minimum height. */
-body.le-prevent-link-expansion .cm-cursor {
+body.le-keep-links-steady .cm-cursor {
   min-height: 1em !important;
 }
 

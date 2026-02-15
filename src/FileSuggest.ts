@@ -1,13 +1,13 @@
 import { App, TFile, AbstractInputSuggest } from "obsidian";
 import { SuggestionItem } from "./types";
 import { isUrl } from "./utils";
-import type { LinkEditModal } from "./LinkEditModal";
+import type { EditLinkModal } from "./EditLinkModal";
 
 export class FileSuggest extends AbstractInputSuggest<SuggestionItem> {
-	modal: LinkEditModal;
+	modal: EditLinkModal;
 	inputEl: HTMLInputElement;
 
-	constructor(app: App, textInputEl: HTMLInputElement, modal: LinkEditModal) {
+	constructor(app: App, textInputEl: HTMLInputElement, modal: EditLinkModal) {
 		super(app, textInputEl);
 		this.modal = modal;
 		this.inputEl = textInputEl;

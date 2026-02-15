@@ -1,10 +1,10 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
-import type LinkEditorPlugin from "./main";
+import type SteadyLinksPlugin from "./main";
 
-export class LinkEditorSettingTab extends PluginSettingTab {
-	plugin: LinkEditorPlugin;
+export class SteadyLinksSettingTab extends PluginSettingTab {
+	plugin: SteadyLinksPlugin;
 
-	constructor(app: App, plugin: LinkEditorPlugin) {
+	constructor(app: App, plugin: SteadyLinksPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -25,17 +25,18 @@ export class LinkEditorSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Prevent link expansion on cursor movement")
+			.setName("Keep links steady")
 			.setDesc(
-				"When enabled, moving the cursor into a link will not reveal its " +
-				"raw markdown syntax. The display text stays editable as normal " +
-				"text; use the Edit Link command to change the destination."
+				"When enabled, moving the cursor into a link will not expand it, " +
+				"and show its raw syntax. The link text stays editable as normal " +
+				"text; use the Edit Link command to change the destination and " +
+				"other properties."
 			)
 			.addToggle((toggle) =>
 				toggle
-					.setValue(this.plugin.settings.preventLinkExpansion)
+					.setValue(this.plugin.settings.keepLinksSteady)
 					.onChange(async (value) => {
-						this.plugin.settings.preventLinkExpansion = value;
+						this.plugin.settings.keepLinksSteady = value;
 						await this.plugin.saveSettings();
 						this.plugin.applySyntaxHiderSetting();
 					})

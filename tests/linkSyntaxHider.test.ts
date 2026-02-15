@@ -5,8 +5,10 @@ import {
 	correctCursorPos,
 	listContinuation,
 	findLinkEndAtPos,
+	computeHiddenRanges,
 	type HiddenRange,
 } from "../src/linkSyntaxHider";
+import { EditorState, EditorSelection } from "@codemirror/state";
 
 // ============================================================================
 // Helper: minimal doc mock for correctCursorPos
@@ -343,5 +345,119 @@ describe("findLinkEndAtPos", () => {
 	it("should handle lineFrom offset", () => {
 		const text = "[link](url)";
 		expect(findLinkEndAtPos(text, 100, 105)).toBe(111); // 100 + 11
+	});
+});
+
+// ============================================================================
+// computeHiddenRanges with EditorState
+// ============================================================================
+
+describe("computeHiddenRanges", () => {
+	it("should return hidden ranges for lines with cursor on links", () => {
+		// Create a minimal EditorState with a link and cursor position
+		const doc = "Check out [[my-note|My Note]] for more info";
+		const state = EditorState.create({
+			doc,
+			selection: EditorSelection.cursor(12), // Cursor inside the link
+		});
+
+		const ranges = computeHiddenRanges(state);
+		
+		// Should have leading and trailing ranges for the wikilink
+		expect(ranges.length).toBeGreaterThanOrEqual(2);
+		
+		// Find the leading range (should include "[[my-note|")
+		const leadingRange = ranges.find(r => r.side === "leading");
+		expect(leadingRange).toBeDefined();
+		expect(leadingRange!.from).toBe(10); // Start of "[["
+		// Leading range ends where display text begins
+		expect(leadingRange!.to).toBeGreaterThan(leadingRange!.from);
+		
+		// Find the trailing range (should include "]]")
+		const trailingRange = ranges.find(r => r.side === "trailing");
+		expect(trailingRange).toBeDefined();
+		// Trailing range starts after display text and ends at end of link
+		expect(trailingRange!.to).toBeGreaterThan(trailingRange!.from);
+	});
+
+	it("should return empty array when cursor is not on a link line", () => {
+		const state = EditorState.create({
+			doc: "This is plain text\nAnd another line with [[a-link]]",
+			selection: EditorSelection.cursor(5), // Cursor on first line (no links)
+		});
+
+		const ranges = computeHiddenRanges(state);
+		
+		// No hidden ranges because cursor line has no links
+		expect(ranges).toEqual([]);
+	});
+
+	it("should handle markdown links", () => {
+		const state = EditorState.create({
+			doc: "Click [here](https://example.com) for details",
+			selection: EditorSelection.cursor(10), // Cursor inside the link
+		});
+
+		const ranges = computeHiddenRanges(state);
+		
+		expect(ranges.length).toBe(2);
+		
+		// Leading range: "["
+		expect(ranges[0]).toEqual({ from: 6, to: 7, side: "leading" });
+		
+		// Trailing range: "](https://example.com)"
+		expect(ranges[1]).toEqual({ from: 11, to: 33, side: "trailing" });
+	});
+
+	it("should handle multiple links on cursor line", () => {
+		const state = EditorState.create({
+			doc: "See [[link1]] and [[link2]] here",
+			selection: EditorSelection.cursor(5), // Cursor on line with multiple links
+		});
+
+		const ranges = computeHiddenRanges(state);
+		
+		// Should have 4 ranges: 2 for each wikilink (leading + trailing)
+		expect(ranges.length).toBe(4);
+	});
+});
+
+// ============================================================================
+// Mode Detection (isLivePreview behavior)
+// ============================================================================
+
+describe("mode detection behavior", () => {
+	describe("isLivePreview logic (documented behavior)", () => {
+		// NOTE: The isLivePreview function checks DOM elements which cannot be
+		// fully tested in a unit test environment. However, we document the
+		// expected behavior here:
+		//
+		// 1. Returns FALSE when:
+		//    - No .markdown-source-view ancestor found
+		//    - .is-source-mode class is present
+		//    - data-mode="source" attribute is set
+		//    - getMode() returns "source"
+		//
+		// 2. Returns TRUE when:
+		//    - .is-live-preview class is present
+		//    - data-mode="live" or data-mode="preview" is set
+		//    - getMode() returns "live" or "preview"
+		//    - Default fallback is TRUE (assume live preview)
+		//
+		// The SyntaxHiderModePlugin.sync() method:
+		// - Calls isLivePreview(view) to determine mode
+		// - Dispatches setSyntaxHiderEnabled effect to update state
+		// - Only enables syntax hiding in live preview mode
+		//
+		// This ensures the "Keep links steady" feature:
+		// - Works in Live Preview mode (syntax is hidden)
+		// - Does NOT work in Source mode (syntax remains visible)
+
+		it("documents that syntax hiding is mode-dependent", () => {
+			// This test serves as documentation of the expected behavior.
+			// The actual mode detection happens in isLivePreview() which
+			// checks DOM classes that aren't available in unit tests.
+			expect(true).toBe(true);
+		});
 	});
 });

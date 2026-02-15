@@ -1,6 +1,6 @@
-# Obsidian Link Editor
+# Steady Links
 
-Edit links in a modal with intelligent suggestions for files, headings, and blocks.
+Brings familiar link behavior to Obsidian: links stay put while you type, and you edit them in a focused modal with intelligent suggestions for files, headings, and blocks.
 
 ## Features
 
@@ -25,8 +25,8 @@ Edit links in a modal with intelligent suggestions for files, headings, and bloc
 ```powershell
 # Run as Administrator in PowerShell
 New-Item -ItemType SymbolicLink `
-  -Path "C:\Users\YOUR_USERNAME\path\to\vault\.obsidian\plugins\obsidian-link-editor" `
-  -Target "$HOME\repos\obsidian-link-editor"
+  -Path "C:\Users\YOUR_USERNAME\path\to\vault\.obsidian\plugins\steady-links" `
+  -Target "$HOME\repos\steady-links"
 ```
 
 ### Development Workflow
@@ -79,10 +79,10 @@ Test files follow the `*.test.ts` naming convention. When adding new utility fun
 ## Project Structure
 
 ```
-obsidian-link-editor/
+steady-links/
 ├── src/
 │   ├── main.ts              # Main plugin class
-│   ├── LinkEditModal.ts     # Link editing modal
+│   ├── EditLinkModal.ts     # Link editing modal
 │   ├── FileSuggest.ts       # File/heading/block suggestions
 │   ├── SettingTab.ts        # Plugin settings
 │   ├── types.ts             # TypeScript interfaces

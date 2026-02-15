@@ -37,7 +37,7 @@ const mockView = {} as MarkdownView;
 // Command Tests
 // ============================================================================
 
-describe('close-and-skip-link command', () => {
+describe('hide-link-syntax command', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});

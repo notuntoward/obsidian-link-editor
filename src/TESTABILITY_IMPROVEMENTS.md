@@ -1,4 +1,4 @@
-# Testability Improvements for Obsidian Link Editor
+# Testability Improvements for Steady Links
 
 This document outlines recommended changes to improve the testability of the codebase, organized by priority and impact.
 
@@ -136,7 +136,7 @@ export function createSuggestion(overrides: Partial<SuggestionItem> = {}): Sugge
 export function createSettings(overrides: Partial<PluginSettings> = {}): PluginSettings {
   return {
     alwaysMoveToEnd: false,
-    preventLinkExpansion: false,
+    keepLinksSteady: false,
     ...overrides,
   };
 }
@@ -158,7 +158,7 @@ export function createHiddenRange(overrides: Partial<HiddenRange> = {}): HiddenR
 
 ### 1.3 Add Clipboard Service Abstraction
 
-**Problem:** Direct use of `navigator.clipboard.readText()` in [`LinkEditModal.ts`](src/LinkEditModal.ts:292-324) and [`main.ts`](src/main.ts:65-70) makes tests dependent on browser APIs.
+**Problem:** Direct use of `navigator.clipboard.readText()` in [`EditLinkModal.ts`](src/EditLinkModal.ts:292-324) and [`main.ts`](src/main.ts:65-70) makes tests dependent on browser APIs.
 
 **Solution:** Create an injectable clipboard service.
 
@@ -191,7 +191,7 @@ export const mockClipboard = (initialText: string = ''): ClipboardService => {
 
 **Usage in main.ts:**
 ```typescript
-export default class LinkEditorPlugin extends Plugin {
+export default class SteadyLinksPlugin extends Plugin {
   clipboard: ClipboardService = browserClipboard;
   
   // In editorCallback:
@@ -382,7 +382,7 @@ export class App {
 
 ### 3.1 Extract Modal State Machine
 
-**Problem:** [`LinkEditModal.ts`](src/LinkEditModal.ts) mixes UI concerns with state management, making it hard to test the interaction flow.
+**Problem:** [`EditLinkModal.ts`](src/EditLinkModal.ts) mixes UI concerns with state management, making it hard to test the interaction flow.
 
 **Solution:** Extract a state machine that can be tested independently.
 
@@ -609,7 +609,7 @@ tests/
 | `tests/harness.ts` | New file | Medium | Medium |
 | `tests/__mocks__/obsidian.ts` | Expand | Medium | High |
 | `src/main.ts` | Refactor | Low | High |
-| `src/LinkEditModal.ts` | Refactor | Medium | Medium |
+| `src/EditLinkModal.ts` | Refactor | Medium | Medium |
 | `src/FileSuggest.ts` | Refactor | Medium | Low |
 
 ---

@@ -16,7 +16,7 @@ import {
 	determineInitialLinkType,
 } from "./modalLogic";
 
-export class LinkEditModal extends Modal {
+export class EditLinkModal extends Modal {
 	link: LinkInfo;
 	onSubmit: (result: LinkInfo) => void;
 	shouldSelectText: boolean;

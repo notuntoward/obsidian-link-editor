@@ -1,5 +1,5 @@
 {
-  "name": "link-editor",
+  "name": "steady-links",
   "version": "0.1.0",
   "description": "Edit links in a modal and reposition cursor safely",
   "main": "main.js",

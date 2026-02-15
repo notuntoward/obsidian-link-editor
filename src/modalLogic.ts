@@ -1,5 +1,5 @@
 /**
- * Pure business logic extracted from LinkEditModal.
+ * Pure business logic extracted from EditLinkModal.
  *
  * These functions contain the decision-making and data-transformation logic
  * that was previously embedded in the Modal class methods.  They have no

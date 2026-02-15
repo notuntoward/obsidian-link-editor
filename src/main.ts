@@ -1,7 +1,7 @@
 import { Plugin, Editor, MarkdownView } from "obsidian";
 import { Extension } from "@codemirror/state";
-import { LinkEditModal } from "./LinkEditModal";
-import { LinkEditorSettingTab } from "./SettingTab";
+import { EditLinkModal } from "./EditLinkModal";
+import { SteadyLinksSettingTab } from "./SettingTab";
 import { PluginSettings, LinkInfo } from "./types";
 import { 
 	parseClipboardLink,
@@ -14,11 +14,11 @@ import { createLinkSyntaxHiderExtension } from "./linkSyntaxHider";
 
 const DEFAULT_SETTINGS: PluginSettings = {
 	alwaysMoveToEnd: false,
-	preventLinkExpansion: false,
+	keepLinksSteady: false,
 };
 
 
-export default class LinkEditorPlugin extends Plugin {
+export default class SteadyLinksPlugin extends Plugin {
 	settings!: PluginSettings;
 
 	/**
@@ -106,7 +106,7 @@ export default class LinkEditorPlugin extends Plugin {
 					const shouldSelectText = linkContext.shouldSelectText;
 					const conversionNotice = linkContext.conversionNotice;
 
-					new LinkEditModal(
+					new EditLinkModal(
 							this.app,
 							link,
 							(result: LinkInfo) => {
@@ -124,7 +124,7 @@ export default class LinkEditorPlugin extends Plugin {
 
 				// At this point, link is guaranteed to be non-null
 				// Open modal for editing
-				new LinkEditModal(
+				new EditLinkModal(
 					this.app,
 					link!,
 					(result: LinkInfo) => {
@@ -140,8 +140,8 @@ export default class LinkEditorPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: "close-link",
-			name: "Close link",
+			id: "hide-link-syntax",
+			name: "Hide Link Syntax",
 			editorCallback: (editor: Editor, view: MarkdownView) => {
 				const cursor = editor.getCursor();
 				const line = editor.getLine(cursor.line);
@@ -166,7 +166,7 @@ export default class LinkEditorPlugin extends Plugin {
 			},
 		});
 
-		this.addSettingTab(new LinkEditorSettingTab(this.app, this));
+		this.addSettingTab(new SteadyLinksSettingTab(this.app, this));
 	}
 
 	/**
@@ -208,7 +208,7 @@ export default class LinkEditorPlugin extends Plugin {
 	 */
 	applySyntaxHiderSetting() {
 		this.syntaxHiderExtensions.length = 0;
-		if (this.settings.preventLinkExpansion) {
+		if (this.settings.keepLinksSteady) {
 			this.syntaxHiderExtensions.push(
 				...createLinkSyntaxHiderExtension(),
 			);

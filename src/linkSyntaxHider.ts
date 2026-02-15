@@ -217,7 +217,7 @@ const hiddenRangesField = StateField.define<HiddenRange[]>({
 // Body class manager
 // ---------------------------------------------------------------------------
 
-const BODY_CLASS = "le-prevent-link-expansion";
+const BODY_CLASS = "le-keep-links-steady";
 
 class BodyClassPlugin implements PluginValue {
 	private enabled = false;

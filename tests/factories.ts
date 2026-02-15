@@ -140,7 +140,7 @@ export function createAliasSuggestion(overrides: Partial<SuggestionItem> = {}): 
 export function createSettings(overrides: Partial<PluginSettings> = {}): PluginSettings {
   return {
     alwaysMoveToEnd: false,
-    preventLinkExpansion: false,
+    keepLinksSteady: false,
     ...overrides,
   };
 }
